@@ -9,6 +9,7 @@
     racket/port racket/pretty
     racket/contract racket/string
     racket/generator
+    racket/file
 )
 
 (provide
@@ -88,13 +89,10 @@
 
 (define (domain/commit dm)
     (match-define (domain id->task id->user cur-user datafile) dm)
-    (define swapfile (format ".~a.swp" datafile))
-    (define out (open-output-file swapfile #:exists 'replace))
-    (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)) out)
-    (pretty-write (map user->datum (sort (hash-values id->user) string<? #:key user-id))
-                  out)
-    (close-output-port out)
-    (rename-file-or-directory swapfile datafile #t))
+    (call-with-atomic-output-file datafile (lambda (out)
+        (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)) out)
+        (pretty-write (map user->datum (sort (hash-values id->user) string<? #:key user-id))
+                      out))))
 
 (define (domain/register-task dm t)
     (match-define (domain id->task _ _ _) dm)
