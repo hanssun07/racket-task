@@ -31,6 +31,8 @@ recompile with `raco make <src>/main.rkt`.
 Without using the default run script, run with `racket main.rkt`.
 The program is a command-line interface; `?` or `help` will show available commands.
 
+The data format was chosen so it works well with git, as long as all merges are done through rebases.
+
 ## Configuration
 
 You can interoperate among multiple organizations ("domains") by setting things up in the
