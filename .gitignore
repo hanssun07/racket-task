@@ -1,4 +1,5 @@
 *.swp
-compiled
-tracker
+compiled/
+tracker/
+data/
 task.config
