@@ -89,7 +89,7 @@
 
 (define (domain/commit dm)
     (match-define (domain id->task id->user cur-user datafile) dm)
-    (call-with-atomic-output-file datafile (lambda (out)
+    (call-with-atomic-output-file datafile (lambda (out tmppath)
         (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)) out)
         (pretty-write (map user->datum (sort (hash-values id->user) string<? #:key user-id))
                       out))))
