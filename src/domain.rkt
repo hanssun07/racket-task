@@ -200,7 +200,7 @@
     (define parsed-id (and id (or (string->number id) id)))
     (itempath syms parsed-id)))
 (define (dmpath->string [dmpath (domain-frame-path (current-domain-frame))])
-    (string-append (string-join (map symbol->string dmpath) ",") ":"))
+    (string-append (string-join (map symbol->string dmpath) "/") ":"))
 
 (define (select-domain dmpath [dmf (current-domain-frame)])
     (define selected (resolve-domain-frame dmpath dmf))

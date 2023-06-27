@@ -106,7 +106,9 @@
     (define (~00 x) (~r x #:min-width 2 #:pad-string "0"))
     (match-define (date _ _ _ d m y _ _ _ _) (seconds->date dt))
     (format "~a-~a-~a" y (~00 m) (~00 d)))
-(define (print-table tab min-widths max-widths gutters aligns)
+(define (print-table tab min-widths max-widths gutters aligns
+            #:ncols [ncols (length min-widths)]
+            #:elide-repeated? [elide-repeated?s (make-list ncols #f)])
     (define widths (list->vector min-widths))
     (for ([row tab])
         (for ([i (vector-length widths)] [cell row])
@@ -114,16 +116,20 @@
                 (min (list-ref max-widths i)
                      (max (string-length cell)
                           (vector-ref widths i))))))
+    (define lasts (make-list ncols ""))
     (for ([row tab])
         (for ([width (in-vector widths)]
               [cell row]
               [gutter gutters]
-              [align aligns])
+              [align aligns]
+              [elide-repeated? elide-repeated?s]
+              [last lasts])
             (printf "~a~a"
                 (make-string gutter #\space)
-                (~a cell
+                (~a (if (and elide-repeated? (equal? cell last)) "" cell)
                     #:width width
                     #:align align)))
+        (set! lasts row)
         (newline)))
 
 

@@ -106,7 +106,8 @@
         '(1 1 20 4 0)
         '(20 5 60 4 1000)
         '(2 0 1 1 2)
-        '(right right left left left)))
+        '(right right left left left)
+        #:elide-repeated? '(#t #f #f #f #f)))
 
 (define (task->summaryrow t)
     (list
