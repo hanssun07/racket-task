@@ -68,12 +68,11 @@
                     (""   "    ~ or <empty>"     "    to the home domain"))
                   (thunk*
                      (assert!! (<= argc 2))
-                     (define path 
+                     (define path
                         (match argv
-                            [`(,_ "/") "~:"]
                             [`(,_ ,str) (string-append str ":")]
                             [_ "~:"]))
-                     (select-domain (itempath-dmpath (string->itempath path)))))
+                     (select-domain (string->dmpath path))))
         (cmdentry '("ld" "list-domains")
                   '(("ld" "list-domains" "see all domains"))
                   (thunk*         

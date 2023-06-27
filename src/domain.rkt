@@ -44,7 +44,7 @@
         select-domain-from-root
     itempath?
         itempath-dmpath itempath-id
-        string->itempath
+        string->itempath    string->dmpath
         dmpath->string)
 
 (struct domain
@@ -137,41 +137,52 @@
 
 (define current-domain-frame (make-parameter domain-tree-root))
 (define (current-domain) (domain-frame-in-domain (current-domain-frame)))
+(define home-domain-frame (make-parameter domain-tree-root))
 
 (define (resolve-domain dmpath [dmf (current-domain-frame)])
     (domain-frame-in-domain (resolve-domain-frame dmpath dmf)))
 
 (define (resolve-domain-frame dmpath [dmf (current-domain-frame)])
-    (if (empty? dmpath) dmf (block
-        (match-define (domain-frame _ subdomains _ parent) dmf)
-        (match-define (cons next rest) dmpath)
-        (match next
-            ['~ (resolve-domain-frame rest domain-tree-root)]
-            [(or '|.| '||) (resolve-domain-frame rest dmf)]
-            ['.. (resolve-domain-frame rest parent)]
-            [_
-             (define next-frame (hash-ref subdomains next #f)) 
-             (if next-frame
-                (resolve-domain-frame rest next-frame)
-                #f)]))))
+    (define (further-resolve dmpath dmf)
+        (if (empty? dmpath) dmf (block
+            (match-define (domain-frame _ subdomains _ parent) dmf)
+            (match-define (cons next rest) dmpath)
+            (match next
+                [(or '|.| '||) (further-resolve rest dmf)]
+                ['.. (further-resolve rest parent)]
+                [_
+                 (define next-frame (hash-ref subdomains next #f)) 
+                 (if next-frame
+                    (further-resolve rest next-frame)
+                    #f)]))))
+    (match dmpath
+        ['() dmf]
+        [`(~ . ,rest) (further-resolve rest (home-domain-frame))]
+        [`(|| . ,rest) (further-resolve rest domain-tree-root)]
+        [_ (further-resolve dmpath dmf)]))
 (define (resolve-domain-frame! dmpath [dmf (current-domain-frame)])
-    (if (empty? dmpath) dmf (block
-        (match-define (domain-frame _ subdomains fpath parent) dmf)
-        (match-define (cons next rest) dmpath)
-        (match next
-            ['~ (resolve-domain-frame! rest domain-tree-root)]
-            [(or '|.| '||) (resolve-domain-frame! rest dmf)]
-            ['.. (resolve-domain-frame! rest parent)]
-            [_
-             (define next-frame (hash-ref subdomains next #f)) 
-             (if next-frame
-                (resolve-domain-frame! rest next-frame)
-                (block
-                    (define next-frame
-                        (hash-ref! subdomains next (domain-frame #f (make-hash)
-                                                                (append fpath (list next))
-                                                                dmf)))
-                    (resolve-domain-frame! rest next-frame)))]))))
+    (define (further-resolve dmpath dmf)
+        (if (empty? dmpath) dmf (block
+            (match-define (domain-frame _ subdomains fpath parent) dmf)
+            (match-define (cons next rest) dmpath)
+            (match next
+                [(or '|.| '||) (further-resolve rest dmf)]
+                ['.. (further-resolve rest parent)]
+                [_
+                 (define next-frame (hash-ref subdomains next #f)) 
+                 (if next-frame
+                    (further-resolve rest next-frame)
+                    (block
+                        (define next-frame
+                            (hash-ref! subdomains next (domain-frame #f (make-hash)
+                                                                    (append fpath (list next))
+                                                                    dmf)))
+                        (further-resolve rest next-frame)))]))))
+    (match dmpath
+        ['() dmf]
+        [`(~ . ,rest) (further-resolve rest (home-domain-frame))]
+        [`(|| . ,rest) (further-resolve rest domain-tree-root)]
+        [_ (further-resolve dmpath dmf)]))
 (define (register-domain dmpath dm [dmf (current-domain-frame)])
     (assert!! (dmpath? dmpath))
     (assert!! (domain? dm))
@@ -199,6 +210,7 @@
     (define syms (map string->symbol parts))
     (define parsed-id (and id (or (string->number id) id)))
     (itempath syms parsed-id)))
+(define (string->dmpath str) (itempath-dmpath (string->itempath str)))
 (define (dmpath->string [dmpath (domain-frame-path (current-domain-frame))])
     (string-append (string-join (map symbol->string dmpath) "/") ":"))
 
@@ -216,4 +228,7 @@
     (string->itempath "abc:123")
     (string->itempath "xyz/abc:123")
     (string->itempath "xyz/abc:")
+    (string->itempath "/xyz/abc:")
+    (string->itempath "/:")
+    (string->itempath "~:")
 )
