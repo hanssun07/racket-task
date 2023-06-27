@@ -54,7 +54,7 @@
     (list-tasks tasks)
     (printf "~a/~a tasks shown.\n" (length tasks) (task-count))))
 
-(define repl-summary-matchers '(":" "sum" "summary"))
+(define repl-summary-matchers '(#f "sum" "summary"))
 (define repl-summary-help '(
     (":" "summary" "get a summary of assigned, pending tasks")))
 (define (repl-summary-handler argc argv) 
