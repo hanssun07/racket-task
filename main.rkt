@@ -2,7 +2,7 @@
 
 (require
     "src/config.rkt"
-    "src/repl.rkt")
+    "src/repl/repl-main.rkt")
 
 (startup)
 
