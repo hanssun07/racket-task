@@ -8,6 +8,7 @@
     racket/match
     racket/block
     racket/string
+    racket/list
 )
 (provide startup)
 
@@ -29,12 +30,13 @@
     (define domain-specs (filter (lambda (x) (equal? 'domain (car x))) input))
     (for-each load-domain domain-specs)
 
-    (set! login-list (reverse login-list))
-    (define offset (+ (string-length (caar login-list)) 13))
-    (printf "Logged in as ~a~a" (caar login-list) (cadar login-list))
-    (for ((login (cdr login-list)))
-        (printf ",\n~a~a~a" (make-string (max 0 (- offset (string-length (car login)))) #\space) (car login) (cadr login)))
-    (printf "\n")))
+    (unless (empty? login-list)
+        (set! login-list (reverse login-list))
+        (define offset (+ (string-length (caar login-list)) 13))
+        (printf "Logged in as ~a~a" (caar login-list) (cadar login-list))
+        (for ((login (cdr login-list)))
+            (printf ",\n~a~a~a" (make-string (max 0 (- offset (string-length (car login)))) #\space) (car login) (cadr login)))
+        (printf "\n"))))
 
 (define (load-domain spec)
     (match-define `(domain ,rawpath ,args ...) spec)
