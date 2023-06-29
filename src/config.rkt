@@ -27,8 +27,13 @@
 (define login-list '())
 (define (startup-from-config) (block
     (define input (file->list configfile))
+
     (define domain-specs (filter (lambda (x) (equal? 'domain (car x))) input))
     (for-each load-domain domain-specs)
+
+    (define options (make-immutable-hash input))
+    (when (hash-has-key? options 'home-domain)
+        (select-domain (car (hash-ref options 'home-domain))))
 
     (unless (empty? login-list)
         (set! login-list (reverse login-list))
@@ -41,18 +46,13 @@
 (define (load-domain spec)
     (match-define `(domain ,rawpath ,args ...) spec)
     (define dmpath (itempath-dmpath (string->itempath (symbol->string rawpath))))
-    (define options (for/hash ((arg args))
-        (match arg
-            [`(datafile ,file)
-             (values 'datafile file)]
-            [`(login ,user)
-             (values 'login user)])))
+    (define options (make-immutable-hash args))
     (define domain (make-domain))
     (when (hash-has-key? options 'datafile)
-        (set-domain-datafile! domain (hash-ref options 'datafile))
+        (set-domain-datafile! domain (car (hash-ref options 'datafile)))
         (domain/load domain))
     (when (hash-has-key? options 'login)
-        (define userid (hash-ref options 'login))
+        (define userid (car (hash-ref options 'login)))
         (domain/login domain userid)
         (set! login-list (cons (list (symbol->string rawpath) userid) login-list)))
     (register-domain dmpath domain))
