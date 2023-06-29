@@ -1,0 +1,23 @@
+#!/bin/bash
+
+dir=$(dirname -- ${BASH_SOURCE[0]})
+if [ -n "$dir" ]
+then
+    cd "$dir"
+fi
+
+racket program/main.rkt
+
+echo
+
+check() {
+    pushd . >/dev/null
+    cd $1
+    echo -n "$1: "
+    git add data.dat
+    git diff --staged --quiet && echo "No changes to commit." || git status
+    popd >/dev/null
+}
+check foo/
+check bar/
+check baz/

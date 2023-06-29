@@ -1,0 +1,35 @@
+#!/bin/bash
+
+dir=$(dirname -- ${BASH_SOURCE[0]})
+if [ -n "$dir" ]
+then
+    cd "$dir"
+fi
+
+run() {
+    folder="$1"
+    shift
+    repo="$1"
+    shift
+
+    if [ -d "$folder/.git" ]
+    then
+        pushd . >/dev/null
+        cd "$folder"
+        echo "$folder"
+        
+        git add data.dat
+        git diff --staged --quiet && echo "No changes to commit." || git commit -m "[update]"
+        
+        git pull --rebase || exit 1
+        git push || exit 1
+        
+        popd >/dev/null
+    else
+        git clone $@ -- "$repo" "$folder" || exit 1
+    fi
+}
+
+run foo/ git@github.com:example/foo.git
+run bar/ git@github.com:example/bar.git
+run baz/ git@github.com:example/baz.git -b tracker

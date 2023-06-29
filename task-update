@@ -1,0 +1,22 @@
+#!/bin/bash
+
+dir=$(dirname -- ${BASH_SOURCE[0]})
+if [ -n "$dir" ]
+then
+    cd "$dir"
+fi
+
+if [ ! -d program/.git ]
+then
+    git clone  -- git@github.com:hanssun07/racket-task.git program || exit 1
+fi
+
+cd program
+
+git pull
+if [ "$#" -ge 1 ]
+then
+    git checkout "$1" || exit 1
+    git pull
+fi
+raco make main.rkt
