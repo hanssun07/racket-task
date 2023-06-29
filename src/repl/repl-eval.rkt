@@ -18,7 +18,7 @@
     (define id (task-id t))
     (define res
         (retry-until-success 
-            (prompt (format "eval ~a@~a~a" (user-id (me)) (dmpath->string) id))
+            (prompt (format "eval ~a@~a~a" (user-name (me)) (dmpath->string) id))
             (eof-barrier)
             (define argv (read-line-tokens))
             (match (car argv)

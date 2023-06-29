@@ -11,7 +11,11 @@
 )
 (provide
     register-task   get-task    next-task-id    task-count
-    register-user   get-user    get-user-me
+    register-user
+        get-user-by-id
+        get-user-by-name
+        next-user-id
+        get-user-me
     (struct-out uteval)
         get-user-task-evals
         get-task-evals
@@ -34,8 +38,14 @@
 (define (register-user u [dmpath empty])
     (define ns (resolve-domain dmpath))
     (domain/register-user ns u))
-(define (get-user uid [dmpath empty])
-    (domain/get-user (resolve-domain dmpath) uid))
+(define (get-user-by-id uid [dmpath empty])
+    (domain/get-user-by-id (resolve-domain dmpath) uid))
+(define (get-user-by-name name
+         [dmpath empty]
+         [failure-result (error-failthrough "no user by name ~a" name)])
+    (domain/get-user-by-name (resolve-domain dmpath) name failure-result))
+(define (next-user-id [dmpath empty])
+    (domain/next-user-id (resolve-domain dmpath)))
 (define (get-user-me [dmpath empty])
     (domain-cur-user (resolve-domain dmpath)))
 

@@ -41,8 +41,7 @@
          (assert!! (<= 1 argc 2))
          (assert!! (task-ready? t))
          (assert!! (not (task-done? t)))
-         (define u (if (= 1 argc) (user-id (me)) (second argv)))
-         (get-user u) ; for assert
+         (define u (if (= 1 argc) (user-id (me)) (user-id (get-user-by-name (second argv)))))
          (task-assign! t u))]
         [(or "done" "d" "finish" "fin" "f")
          (assert!! (= 1 argc))
@@ -76,7 +75,7 @@
     (define t (get-task id))
     (define continue? #t)
     (retry-until-success (block
-        (prompt (format "ed ~a@~a~a" (user-id (me)) (dmpath->string) id))
+        (prompt (format "ed ~a@~a~a" (user-name (me)) (dmpath->string) id))
         (eof-barrier)
         (define argv (read-line-tokens))
         (set! continue? (and (handle-edit-task id argv) continue?))))

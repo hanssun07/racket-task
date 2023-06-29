@@ -123,7 +123,7 @@
              (define p (get-task-priority t))
              (if p (~r (get-user-task-assignment-index (me) t) #:precision 0) "-")]
             [(and (task-assigned? t) (not (task-done? t)))
-             (task-assigned-to t)]
+             (user-name (get-user-by-id (task-assigned-to t)))]
             [#t ""])))
 
 (define (list-tasks tasks)

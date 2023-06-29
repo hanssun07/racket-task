@@ -30,7 +30,9 @@
         domain/next-task-id
         domain/task-count
     domain/register-user
-        domain/get-user
+        domain/get-user-by-id
+        domain/get-user-by-name
+        domain/next-user-id
 
     dmpath? (struct-out itempath)
     (struct-out domain-frame)
@@ -69,30 +71,50 @@
 (define (domain/users dm) (hash-values (domain-id->user dm)))
 (define (domain/tasks dm) (hash-values (domain-id->task dm)))
 
-(define (domain/login dm uid)
-    (set-domain-cur-user! dm (hash-ref (domain-id->user dm) uid)))
+(define (domain/login dm name)
+    (set-domain-cur-user! dm (domain/get-user-by-name dm name)))
 
 (define (domain/load dm) (block
-    (match-define (domain id->task id->user cur-user datafile) dm)
+    (match-define (domain id->task id->user _ datafile) dm)
     (hash-clear! id->task)
     (hash-clear! id->user)
     (define in (open-input-file datafile))
     (define data (port->list read in))
     (close-input-port in)
+    (if (number? (first data))
+        (domain/load/v1 dm (cdr data))
+        (domain/load/v0 dm data))))
+    
+(define (domain/load/v1 dm data)
+    (match-define (domain _ _ cur-user _) dm)
+    (define tasks (first data))
+    (define users (second data))
+    (for ((task tasks) (id (in-naturals)))
+        (domain/register-task dm (datum->task (cons id (cdr task)))))
+    (for ((user users) (id (in-naturals)))
+        (domain/register-user dm (datum->user (cons id (cdr user)))))
+    (when cur-user (domain/login dm (user-id cur-user))))
+
+(define (domain/load/v0 dm data)
+    (match-define (domain _ _ cur-user _) dm)
     (define tasks (first data))
     (define users (second data))
     (for ((task tasks))
         (domain/register-task dm (datum->task task)))
-    (for ((user users))
-        (domain/register-user dm (datum->user user)))
-    (when cur-user (domain/login dm (user-id cur-user)))))
+    (for ((user users) (id (in-naturals)))
+        (domain/register-user dm (datum->user (cons id user))))
+    (for ((task (hash-values (domain-id->task dm))))
+        (when (task-assigned-to task)
+            (task-assign! task (user-id (domain/get-user-by-name dm (task-assigned-to task))))))
+    (when cur-user (domain/login dm (user-id cur-user))))
 
 (define (domain/commit dm)
     (match-define (domain id->task id->user cur-user datafile) dm)
     (call-with-atomic-output-file datafile (lambda (out tmppath)
-        (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)) out)
-        (pretty-write (map user->datum (sort (hash-values id->user) string<? #:key user-id))
-                      out))))
+      (parameterize ([current-output-port out])
+        (pretty-write 1)
+        (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)))
+        (pretty-write (map user->datum (sort (hash-values id->user) < #:key user-id)))))))
 
 (define (domain/register-task dm t)
     (match-define (domain id->task _ _ _) dm)
@@ -115,9 +137,20 @@
     (define id (user-id u))
     (hash-set! id->user id u)
     (domain-register u dm))
-(define (domain/get-user dm id)
+(define (domain/get-user-by-id dm id)
     (match-define (domain _ id->user _ _) dm)
     (hash-ref id->user id))
+(define (domain/get-user-by-name dm name
+         [failure-result (error-failthrough "no user by name ~a" name)])
+    (match-define (domain _ id->user _ _) dm)
+    (define matches (filter (lambda (u) (equal? name (user-name u))) (hash-values id->user)))
+    (if (empty? matches)
+        (if (procedure? failure-result) (failure-result) failure-result)
+        (car matches)))
+(define (domain/next-user-id dm)
+    (match-define (domain _ id->user _ _) dm)
+    (if (hash-empty? id->user) 0
+        (add1 (argmax values (hash-keys id->user)))))
 
 
 (struct domain-frame

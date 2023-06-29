@@ -85,8 +85,8 @@
                   (thunk* (block
                      (assert!! (= 2 argc))
                      (define name (second argv))
-                     (assert!! (not (hash-has-key? (domain-id->user (current-domain)) name)))
-                     (register-user (make-user name))
+                     (assert!! (not (get-user-by-name name '() #f)))
+                     (register-user (make-user (next-user-id) name))
                      (printf "User ~a registered.\n" name))))
         (cmdentry '("swap-user")
                   '(("" "swap-user" "login to a different user"))
@@ -95,7 +95,7 @@
 (define (repl)
     (retry-until-success (block
         (if (get-user-me)
-            (prompt (format "~a@~a" (user-id (me)) (dmpath->string)))
+            (prompt (format "~a@~a" (user-name (me)) (dmpath->string)))
             (prompt (format "~a" (dmpath->string))))
         (eof-barrier)
         (define argv (read-line-tokens))
