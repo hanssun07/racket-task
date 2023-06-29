@@ -33,7 +33,7 @@
 
     (define options (make-immutable-hash input))
     (when (hash-has-key? options 'home-domain)
-        (select-domain (car (hash-ref options 'home-domain))))
+        (select-domain (string->dmpath (symbol->string (car (hash-ref options 'home-domain))))))
 
     (unless (empty? login-list)
         (set! login-list (reverse login-list))
