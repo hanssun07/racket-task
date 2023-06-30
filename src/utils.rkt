@@ -18,7 +18,7 @@
         (raise (format fmt xs ...))))
 
 (define ((error-failthrough fmt . vs))
-    (error (apply fmt vs)))
+    (error (apply format fmt vs)))
 
 (define (list-uniq lst)
     (define (helper x xs)

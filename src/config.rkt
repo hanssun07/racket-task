@@ -51,10 +51,14 @@
     (when (hash-has-key? options 'datafile)
         (set-domain-datafile! domain (car (hash-ref options 'datafile)))
         (domain/load domain))
+    (when (hash-has-key? options 'user-aliases)
+        (define aliases (make-immutable-hash (car (hash-ref options 'user-aliases))))
+        (set-domain-user-aliases! domain aliases))
     (when (hash-has-key? options 'login)
-        (define userid (car (hash-ref options 'login)))
-        (domain/login domain userid)
-        (set! login-list (cons (list (symbol->string rawpath) userid) login-list)))
+        (define username (car (hash-ref options 'login)))
+        (define user (domain/get-user-by-name domain username))
+        (domain/login domain user)
+        (set! login-list (cons (list (symbol->string rawpath) username) login-list)))
     (register-domain dmpath domain))
     
     

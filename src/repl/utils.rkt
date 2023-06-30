@@ -6,6 +6,7 @@
     racket/block    racket/match
     racket/file     racket/system   racket/port
     "../domain.rkt"
+    "../model.rkt"
     "../utils.rkt")
 (provide 
     (struct-out cmdentry)
@@ -98,7 +99,7 @@
         (define argv (read-line-tokens))
         (define argc (length argv))
         (assert!! (= 1 argc))
-        (domain/login (current-domain) (car argv))
+        (domain/login (current-domain) (get-user-by-name (car argv)))
         (printf "Logged in as ~a.\n" (car argv))
         #t))))
  

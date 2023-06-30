@@ -75,7 +75,7 @@
     (define t (get-task id))
     (define continue? #t)
     (retry-until-success (block
-        (prompt (format "ed ~a@~a~a" (user-name (me)) (dmpath->string) id))
+        (prompt (format "ed ~a@~a~a" (user-display-name (me)) (dmpath->string) id))
         (eof-barrier)
         (define argv (read-line-tokens))
         (set! continue? (and (handle-edit-task id argv) continue?))))

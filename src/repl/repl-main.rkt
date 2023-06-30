@@ -95,7 +95,7 @@
 (define (repl)
     (retry-until-success (block
         (if (get-user-me)
-            (prompt (format "~a@~a" (user-name (me)) (dmpath->string)))
+            (prompt (format "~a@~a" (user-display-name (me)) (dmpath->string)))
             (prompt (format "~a" (dmpath->string))))
         (eof-barrier)
         (define argv (read-line-tokens))
