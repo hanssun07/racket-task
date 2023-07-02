@@ -19,8 +19,8 @@
         domain-id->task
         domain-id->user
         domain-cur-user
-        domain-datafile
-        set-domain-datafile!
+        domain-datafile     set-domain-datafile!
+        domain-user-aliases set-domain-user-aliases!
     domain/users domain/tasks
     domain/login
         domain/load
@@ -30,7 +30,10 @@
         domain/next-task-id
         domain/task-count
     domain/register-user
-        domain/get-user
+        domain/get-user-by-id
+        domain/get-user-by-name
+        domain/next-user-id
+        user-display-name
 
     dmpath? (struct-out itempath)
     (struct-out domain-frame)
@@ -44,14 +47,15 @@
         select-domain-from-root
     itempath?
         itempath-dmpath itempath-id
-        string->itempath
+        string->itempath    string->dmpath
         dmpath->string)
 
 (struct domain
     (id->task
      id->user
      cur-user
-     datafile)
+     datafile
+     user-aliases)
     #:mutable)
 
 (define obj->domain (make-weak-hasheq))
@@ -64,46 +68,66 @@
 (define atomic-task-id? exact-nonnegative-integer?)
 
 (define (make-domain [datafile #f])
-    (domain (make-hash) (make-hash) #f datafile))
+    (domain (make-hash) (make-hash) #f datafile (hash)))
 
 (define (domain/users dm) (hash-values (domain-id->user dm)))
 (define (domain/tasks dm) (hash-values (domain-id->task dm)))
 
-(define (domain/login dm uid)
-    (set-domain-cur-user! dm (hash-ref (domain-id->user dm) uid)))
+(define (domain/login dm u)
+    (set-domain-cur-user! dm u))
 
 (define (domain/load dm) (block
-    (match-define (domain id->task id->user cur-user datafile) dm)
+    (match-define (domain id->task id->user _ datafile _) dm)
     (hash-clear! id->task)
     (hash-clear! id->user)
     (define in (open-input-file datafile))
     (define data (port->list read in))
     (close-input-port in)
+    (if (number? (first data))
+        (domain/load/v1 dm (cdr data))
+        (domain/load/v0 dm data))))
+    
+(define (domain/load/v1 dm data)
+    (match-define (domain _ _ cur-user _ _) dm)
+    (define tasks (first data))
+    (define users (second data))
+    (for ((task tasks) (id (in-naturals)))
+        (domain/register-task dm (datum->task (cons id (cdr task)))))
+    (for ((user users) (id (in-naturals)))
+        (domain/register-user dm (datum->user (cons id (cdr user)))))
+    (when cur-user (domain/login dm (user-id cur-user))))
+
+(define (domain/load/v0 dm data)
+    (match-define (domain _ _ cur-user _ _) dm)
     (define tasks (first data))
     (define users (second data))
     (for ((task tasks))
         (domain/register-task dm (datum->task task)))
-    (for ((user users))
-        (domain/register-user dm (datum->user user)))
-    (when cur-user (domain/login dm (user-id cur-user)))))
+    (for ((user users) (id (in-naturals)))
+        (domain/register-user dm (datum->user (cons id user))))
+    (for ((task (hash-values (domain-id->task dm))))
+        (when (task-assigned-to task)
+            (task-assign! task (user-id (domain/get-user-by-name dm (task-assigned-to task))))))
+    (when cur-user (domain/login dm (user-id cur-user))))
 
 (define (domain/commit dm)
-    (match-define (domain id->task id->user cur-user datafile) dm)
+    (match-define (domain id->task id->user cur-user datafile _) dm)
     (call-with-atomic-output-file datafile (lambda (out tmppath)
-        (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)) out)
-        (pretty-write (map user->datum (sort (hash-values id->user) string<? #:key user-id))
-                      out))))
+      (parameterize ([current-output-port out])
+        (pretty-write 1)
+        (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)))
+        (pretty-write (map user->datum (sort (hash-values id->user) < #:key user-id)))))))
 
 (define (domain/register-task dm t)
-    (match-define (domain id->task _ _ _) dm)
+    (match-define (domain id->task _ _ _ _) dm)
     (define id (task-id t))
     (hash-set! id->task id t)
     (domain-register t dm))
 (define (domain/get-task dm id)
-    (match-define (domain id->task _ _ _) dm)
+    (match-define (domain id->task _ _ _ _) dm)
     (hash-ref id->task id))
 (define (domain/next-task-id dm)
-    (match-define (domain id->task _ _ _) dm)
+    (match-define (domain id->task _ _ _ _) dm)
     (if (hash-empty? id->task) 0
         (add1 (argmax values (hash-keys id->task)))))
 
@@ -111,13 +135,29 @@
     (hash-count (domain-id->task dm)))
 
 (define (domain/register-user dm u)
-    (match-define (domain _ id->user _ _) dm)
+    (match-define (domain _ id->user _ _ _) dm)
     (define id (user-id u))
     (hash-set! id->user id u)
     (domain-register u dm))
-(define (domain/get-user dm id)
-    (match-define (domain _ id->user _ _) dm)
+(define (domain/get-user-by-id dm id)
+    (match-define (domain _ id->user _ _ _) dm)
     (hash-ref id->user id))
+(define (domain/get-user-by-name dm name
+         [failure-result (error-failthrough "no user by name ~a" name)])
+    (match-define (domain _ id->user _ _ _) dm)
+    (define matches (filter (lambda (u) (equal? name (user-display-name u))) (hash-values id->user)))
+    (if (empty? matches)
+        (if (procedure? failure-result) (failure-result) failure-result)
+        (car matches)))
+(define (domain/next-user-id dm)
+    (match-define (domain _ id->user _ _ _) dm)
+    (if (hash-empty? id->user) 0
+        (add1 (argmax values (hash-keys id->user)))))
+
+(define (user-display-name u)
+    (hash-ref (domain-user-aliases (domain-of u))
+              (user-name u)
+              (user-name u)))
 
 
 (struct domain-frame
@@ -137,41 +177,52 @@
 
 (define current-domain-frame (make-parameter domain-tree-root))
 (define (current-domain) (domain-frame-in-domain (current-domain-frame)))
+(define home-domain-frame (make-parameter domain-tree-root))
 
 (define (resolve-domain dmpath [dmf (current-domain-frame)])
     (domain-frame-in-domain (resolve-domain-frame dmpath dmf)))
 
 (define (resolve-domain-frame dmpath [dmf (current-domain-frame)])
-    (if (empty? dmpath) dmf (block
-        (match-define (domain-frame _ subdomains _ parent) dmf)
-        (match-define (cons next rest) dmpath)
-        (match next
-            ['~ (resolve-domain-frame rest domain-tree-root)]
-            [(or '|.| '||) (resolve-domain-frame rest dmf)]
-            ['.. (resolve-domain-frame rest parent)]
-            [_
-             (define next-frame (hash-ref subdomains next #f)) 
-             (if next-frame
-                (resolve-domain-frame rest next-frame)
-                #f)]))))
+    (define (further-resolve dmpath dmf)
+        (if (empty? dmpath) dmf (block
+            (match-define (domain-frame _ subdomains _ parent) dmf)
+            (match-define (cons next rest) dmpath)
+            (match next
+                [(or '|.| '||) (further-resolve rest dmf)]
+                ['.. (further-resolve rest parent)]
+                [_
+                 (define next-frame (hash-ref subdomains next #f)) 
+                 (if next-frame
+                    (further-resolve rest next-frame)
+                    #f)]))))
+    (match dmpath
+        ['() dmf]
+        [`(~ . ,rest) (further-resolve rest (home-domain-frame))]
+        [`(|| . ,rest) (further-resolve rest domain-tree-root)]
+        [_ (further-resolve dmpath dmf)]))
 (define (resolve-domain-frame! dmpath [dmf (current-domain-frame)])
-    (if (empty? dmpath) dmf (block
-        (match-define (domain-frame _ subdomains fpath parent) dmf)
-        (match-define (cons next rest) dmpath)
-        (match next
-            ['~ (resolve-domain-frame! rest domain-tree-root)]
-            [(or '|.| '||) (resolve-domain-frame! rest dmf)]
-            ['.. (resolve-domain-frame! rest parent)]
-            [_
-             (define next-frame (hash-ref subdomains next #f)) 
-             (if next-frame
-                (resolve-domain-frame! rest next-frame)
-                (block
-                    (define next-frame
-                        (hash-ref! subdomains next (domain-frame #f (make-hash)
-                                                                (append fpath (list next))
-                                                                dmf)))
-                    (resolve-domain-frame! rest next-frame)))]))))
+    (define (further-resolve dmpath dmf)
+        (if (empty? dmpath) dmf (block
+            (match-define (domain-frame _ subdomains fpath parent) dmf)
+            (match-define (cons next rest) dmpath)
+            (match next
+                [(or '|.| '||) (further-resolve rest dmf)]
+                ['.. (further-resolve rest parent)]
+                [_
+                 (define next-frame (hash-ref subdomains next #f)) 
+                 (if next-frame
+                    (further-resolve rest next-frame)
+                    (block
+                        (define next-frame
+                            (hash-ref! subdomains next (domain-frame #f (make-hash)
+                                                                    (append fpath (list next))
+                                                                    dmf)))
+                        (further-resolve rest next-frame)))]))))
+    (match dmpath
+        ['() dmf]
+        [`(~ . ,rest) (further-resolve rest (home-domain-frame))]
+        [`(|| . ,rest) (further-resolve rest domain-tree-root)]
+        [_ (further-resolve dmpath dmf)]))
 (define (register-domain dmpath dm [dmf (current-domain-frame)])
     (assert!! (dmpath? dmpath))
     (assert!! (domain? dm))
@@ -199,6 +250,7 @@
     (define syms (map string->symbol parts))
     (define parsed-id (and id (or (string->number id) id)))
     (itempath syms parsed-id)))
+(define (string->dmpath str) (itempath-dmpath (string->itempath str)))
 (define (dmpath->string [dmpath (domain-frame-path (current-domain-frame))])
     (string-append (string-join (map symbol->string dmpath) "/") ":"))
 
@@ -216,4 +268,7 @@
     (string->itempath "abc:123")
     (string->itempath "xyz/abc:123")
     (string->itempath "xyz/abc:")
+    (string->itempath "/xyz/abc:")
+    (string->itempath "/:")
+    (string->itempath "~:")
 )

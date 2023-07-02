@@ -4,6 +4,7 @@
     racket/list)
 
 (provide assert!! expect!!
+    error-failthrough
     list-uniq
     list-truncate)
 
@@ -16,6 +17,9 @@
     (when (not expr)
         (raise (format fmt xs ...))))
 
+(define ((error-failthrough fmt . vs))
+    (error (apply format fmt vs)))
+
 (define (list-uniq lst)
     (define (helper x xs)
         (cond
@@ -26,3 +30,4 @@
 
 (define (list-truncate lst [n (in-naturals 0)])
     (for/list ([x lst] [_ n]) x))
+
