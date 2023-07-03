@@ -4,6 +4,7 @@
     racket/function racket/list
     racket/match    racket/block
     "../utils.rkt"
+    "../utils-untyped.rkt"
     "../model.rkt"
     "../task.rkt"
     "../domain.rkt"

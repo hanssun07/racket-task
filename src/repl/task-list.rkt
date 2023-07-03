@@ -9,7 +9,8 @@
     "../user.rkt"
     "../utils.rkt"
     "../domain.rkt"
-    "utils.rkt")
+    "utils.rkt"
+    "utils-output.rkt")
 (provide
     repl-list-tasks
     repl-summary

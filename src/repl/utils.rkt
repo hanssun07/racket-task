@@ -1,13 +1,15 @@
 #lang racket/base
 
 (require
-    racket/format   racket/string   racket/list
+    racket/string   racket/list
         racket/function     racket/exn
     racket/block    racket/match
     racket/file     racket/system   racket/port
     "../domain.rkt"
     "../model.rkt"
-    "../utils.rkt")
+    "../utils.rkt"
+    "../utils-untyped.rkt"
+    "utils-output.rkt")
 (provide 
     (struct-out cmdentry)
         cmdentry-desc cmdentry-spacer
@@ -16,9 +18,7 @@
     prompt  prompt-multi    prompt-editor
     load    commit  commit-all  save-and-exit
     eof-barrier me  login
-    read-token  read-line-tokens
-    format-date
-    print-table)
+    read-token  read-line-tokens)
 
 (struct cmdentry (matchers help handler))
 (define (cmdentry-desc d) (cmdentry '() d void))
@@ -103,34 +103,4 @@
         (printf "Logged in as ~a.\n" (car argv))
         #t))))
  
-(define (format-date dt)
-    (define (~00 x) (~r x #:min-width 2 #:pad-string "0"))
-    (match-define (date _ _ _ d m y _ _ _ _) (seconds->date dt))
-    (format "~a-~a-~a" y (~00 m) (~00 d)))
-(define (print-table tab min-widths max-widths gutters aligns
-            #:ncols [ncols (length min-widths)]
-            #:elide-repeated? [elide-repeated?s (make-list ncols #f)])
-    (define widths (list->vector min-widths))
-    (for ([row tab])
-        (for ([i (vector-length widths)] [cell row])
-            (vector-set! widths i
-                (min (list-ref max-widths i)
-                     (max (string-length cell)
-                          (vector-ref widths i))))))
-    (define lasts (make-list ncols ""))
-    (for ([row tab])
-        (for ([width (in-vector widths)]
-              [cell row]
-              [gutter gutters]
-              [align aligns]
-              [elide-repeated? elide-repeated?s]
-              [last lasts])
-            (printf "~a~a"
-                (make-string gutter #\space)
-                (~a (if (and elide-repeated? (equal? cell last)) "" cell)
-                    #:width width
-                    #:align align)))
-        (set! lasts row)
-        (newline)))
-
 
