@@ -2,5 +2,5 @@
 compiled/
 tracker/
 data/
-task.config
-data.dat
+/task.config
+/data.dat
