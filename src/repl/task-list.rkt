@@ -1,4 +1,4 @@
-#lang racket/base
+#lang typed/racket/base
 
 (require
     racket/block    racket/match
@@ -28,15 +28,17 @@
     (""   " -t by-id"               "    order by ascending id")
     (""   " -p by-priority"         "    order by descending priority score")
     (""   ""                        "  options trigger left-to-right")))
+(: repl-list-handler CommandHandler)
 (define (repl-list-handler argc argv) (block
     (define filters (list
         (filter-by task-ready?)
         (filter-by not task-done?)))
-    (define (add-filter . args) (set! filters (cons (apply filter-by args) filters)))
-    (define by-priority (sort-by > (curry get-user-task-assignment-index (me))))
+    (define (add-filter [arg0 : Procedure] . [args : Procedure *])
+        (set! filters (cons (apply filter-by arg0 args) filters)))
+    (define by-priority (sort-by > (curry get-user-task-assignment-index (assert (me)))))
     (define by-id (sort-by < task-id))
     (define sorter (list by-id by-priority))
-    (define n (in-naturals 0))
+    (define n : Cardinality cardinal-infty)
     (for ((arg (cdr argv)))
         (match arg
             ["blocked" (add-filter not task-ready?)]
@@ -47,8 +49,8 @@
             ["unassigned" (add-filter not task-assigned?)]
             ["done" (add-filter task-done?)]
             ["not-done" (add-filter not task-done?)]
-            ["mine" (add-filter (curry equal? (user-id (me))) task-assigned-to)]
-            [(? number?) (set! n arg)]
+            ["mine" (add-filter (curry equal? (user-id (assert (me)))) task-assigned-to)]
+            [(? number?) (set! n (cast arg Cardinality))]
             [(or "by-id" "-t") (set! sorter (list by-id))]
             [(or "by-priority" "-p") (set! sorter (list by-id by-priority))]))
     (define tasks (list-truncate (apply query-tasks (append sorter filters)) n))
@@ -58,40 +60,44 @@
 (define repl-summary-matchers '(#f "sum" "summary"))
 (define repl-summary-help '(
     (":" "summary" "get a summary of assigned, pending tasks")))
+(: repl-summary-handler CommandHandler)
 (define (repl-summary-handler argc argv) 
+    (: tasks->rows : String (Listof Task) -> TableEntries)
+    (define (tasks->rows dmstr tasks)
+        (map (lambda ([t : Task]) (cons dmstr (task->summaryrow t))) tasks))
     (define tasks-assigned (apply append
-        (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
+        (for/list ([dmf (in-domain)]) : (Listof TableEntries)
+          (parameterize ([current-domain-frame dmf])
             (define tasks
                 (if (me)
                     (query-tasks (sort-by < task-id)
-                                 (filter-by (curry equal? (user-id (me))) task-assigned-to)
+                                 (filter-by (curry equal? (user-id (assert (me)))) task-assigned-to)
                                  (filter-by task-assigned?)
                                  (filter-by not task-done?))
                     empty))
             (define dmstr (dmpath->string (domain-frame-path dmf)))
-            (map (curry cons dmstr)
-                 (map task->summaryrow tasks))))))
+            (tasks->rows dmstr tasks)))))
     (define tasks-awaiting-eval (apply append
-        (for/list ([dmf (in-domain)])
-            (parameterize ([current-domain-frame dmf])
+        (for/list ([dmf (in-domain)]) : (Listof (Listof Task))
+          (parameterize ([current-domain-frame dmf])
                 (if (me)
-                    (query-tasks (filter-by (curry user-needs-eval-task? (me))))
+                    (query-tasks (filter-by (curry user-needs-eval-task? (assert (me)))))
                     empty)))))
     (define num-tasks-pending 0)
     (define tasks-pending (apply append
-        (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
+        (for/list ([dmf (in-domain)]) : (Listof TableEntries)
+          (parameterize ([current-domain-frame dmf])
             (define tasks
                 (if (me)
                     (query-tasks (sort-by < task-id)
-                                 (sort-by > (curry get-user-task-assignment-index (me)))
+                                 (sort-by > (curry get-user-task-assignment-index (assert (me))))
                                  (filter-by task-ready?)
                                  (filter-by not task-assigned?))
                     empty))
             (define dmstr (dmpath->string (domain-frame-path dmf)))
             (set! num-tasks-pending (+ num-tasks-pending (length tasks)))
-            (map (curry cons dmstr)
-                 (map task->summaryrow (list-truncate tasks 5)))))))
-    (define tab (append
+            (tasks->rows dmstr (list-truncate tasks 5))))))
+    (define tab : TableEntries (append
         (if (empty? tasks-assigned)
             (list (list "" "" "" "" "\rNo tasks in progress."))
             (list (list "" "" "" "" (format "\r~a tasks in progress." (length tasks-assigned)))))
@@ -110,6 +116,7 @@
         '(right right left left left)
         #:elide-repeated? '(#t #f #f #f #f)))
 
+(: task->summaryrow : Task -> (Listof String))
 (define (task->summaryrow t)
     (list
         (~a (task-id t))
@@ -122,11 +129,12 @@
         (cond
             [(and (task-ready? t) (not (task-assigned? t))) 
              (define p (get-task-priority t))
-             (if p (~r (get-user-task-assignment-index (me) t) #:precision 0) "-")]
+             (if p (~r (get-user-task-assignment-index (assert (me)) t) #:precision 0) "-")]
             [(and (task-assigned? t) (not (task-done? t)))
-             (user-display-name (get-user-by-id (task-assigned-to t)))]
+             (user-display-name (get-user-by-id (assert (task-assigned-to t))))]
             [#t ""])))
 
+(: list-tasks : (Listof Task) -> Void)
 (define (list-tasks tasks)
     (define tab (map task->summaryrow tasks))
     (print-table tab

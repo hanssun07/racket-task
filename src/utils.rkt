@@ -5,10 +5,15 @@
     racket/list)
 
 (provide
+    with-casts
     error-failthrough
     seconds-since-epoch
     list-uniq
-    list-truncate)
+    list-truncate Cardinality cardinal-infty)
+
+(define-syntax-rule
+    (with-casts ([x : T] ...) body0 body ...)
+    (let ([x : T (cast x T)] ...) body0 body ...))
 
 (: error-failthrough (String Any * -> (-> Nothing)))
 (define ((error-failthrough fmt . vs))
@@ -27,7 +32,12 @@
             [#t (cons x (helper (car xs) (cdr xs)))]))
     (if (empty? lst) lst (helper (car lst) (cdr lst))))
 
-(: list-truncate (All (T) ((Listof T) (Sequenceof Any) -> (Listof T))))
-(define (list-truncate lst [n (in-naturals 0)])
+(define-type Cardinality
+    (U Exact-Nonnegative-Integer
+       (Sequenceof Any)))
+       
+(: list-truncate (All (T) (Listof T) Cardinality -> (Listof T)))
+(define cardinal-infty (in-naturals 0))
+(define (list-truncate lst n)
     (for/list ([x lst] [_ n]) x))
 

@@ -6,7 +6,8 @@
     racket/format  racket/match)
 (provide
     format-date
-    print-table)
+    TableEntries
+        print-table)
 
 (: format-date : Timestamp -> String)
 (define (format-date dt)
@@ -15,7 +16,9 @@
     (match-define (date _ _ _ d m y _ _ _ _) (seconds->date dt))
     (format "~a-~a-~a" y (~00 m) (~00 d)))
 
-(: print-table (->* ((Listof (Listof String))
+(define-type TableEntries (Listof (Listof String)))
+
+(: print-table (->* (TableEntries
                      (Listof Index)
                      (Listof Index)
                      (Listof Index)

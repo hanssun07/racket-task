@@ -150,8 +150,10 @@
 (require/typed/provide 'query
     [#:opaque Filter-By _filter-by?]
     [#:opaque Sort-By _sort-by?]
-    [filter-by ((Task -> Any) (Any -> Any) * -> Filter-By)]
-    [sort-by ((Any Any -> Any) (Task -> Any) (Any -> Any) * -> Sort-By)]
+    ;[filter-by ((Any -> Any) (Any -> Any) * -> Filter-By)]
+    ;[sort-by (All (T) (T T -> Any) (Any -> T) (Any -> Any) * -> Sort-By)]
+    [filter-by (Procedure Procedure * -> Filter-By)]
+    [sort-by (Procedure Procedure Procedure * -> Sort-By)]
     [query-tasks (->* () (#:recursive? Boolean #:domain-frame DomainFrame)
                       #:rest (U Filter-By Sort-By)
                       (Listof Task))])

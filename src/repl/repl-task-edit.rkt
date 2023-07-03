@@ -1,4 +1,4 @@
-#lang racket/base
+#lang typed/racket/base
 
 (require
     racket/match    racket/block
@@ -9,16 +9,19 @@
     "../task.rkt"
     "../user.rkt"
     "../domain.rkt"
+    "../types.rkt"
     "utils.rkt"
     "task-misc.rkt")
 (provide
     handle-edit-task
     repl-edit)
 
+(: handle-edit-task : Task-ID (Listof Any) -> Boolean)
 (define (handle-edit-task id argv)
     (define t (get-task id))
-    (define continue? #t)
+    (define continue? : Boolean #t)
     (define argc (length argv))
+    (assert argv pair?)
     (match (car argv)
         [(or "cat" "show")
          (show-task id)]
@@ -26,8 +29,9 @@
          (assert!! (= 1 argc))
          (define desc (prompt-editor (or (task-desc t) "")))
          (task-set-desc! t (if (zero? (string-length desc)) #f desc)))]
-        [(or "name" "rename" "title" "retitle" "n" "t") (block
+        [(or "name" "rename" "title" "retitle" "n" "t")
          (assert!! (< 1 argc))
+         (with-casts ([argv : (List* Any String (Listof String))])
          (define name (string-join (cdr argv)))
          (task-set-title! t name))]
         [(or "block" "b")
@@ -38,20 +42,22 @@
          (assert!! (= 1 argc))
          (assert!! (not (task-ready? t)))
          (task-ready! t)]
-        [(or "assign" "ass" "a") (block
+        [(or "assign" "ass" "a")
          (assert!! (<= 1 argc 2))
          (assert!! (task-ready? t))
          (assert!! (not (task-done? t)))
-         (define u (if (= 1 argc) (user-id (me)) (user-id (get-user-by-name (second argv)))))
+         (with-casts ([argv : (List Any String)])
+         (define u (if (= 1 argc) (user-id (assert (me))) (user-id (get-user-by-name (second argv)))))
          (task-assign! t u))]
         [(or "done" "d" "finish" "fin" "f")
          (assert!! (= 1 argc))
          (assert!! (task-assigned? t))
          (assert!! (not (task-done? t)))
          (task-done! t)]
-        [(or "eval" "e") (block
+        [(or "eval" "e")
          (assert!! (<= 2 argc 4))
-         (define cur-user (me))
+         (with-casts ([argv : (Listof Eval-Rating)])
+         (define cur-user (assert (me)))
          (user-set-interest! cur-user id (second argv))
          (when (<= 3 argc) (user-set-priority! cur-user id (third argv)))
          (when (<= 4 argc) (user-set-needs-refinement! cur-user id (fourth argv))))]
@@ -72,11 +78,12 @@
          (set! continue? #f)])
     continue?)
 
+(: repl-edit : Task-ID -> Void)
 (define (repl-edit id)
     (define t (get-task id))
     (define continue? #t)
     (retry-until-success (block
-        (prompt (format "ed ~a@~a~a" (user-display-name (me)) (dmpath->string) id))
+        (prompt (format "ed ~a@~a~a" (user-display-name (assert (me))) (dmpath->string) id))
         (eof-barrier)
         (define argv (read-line-tokens))
         (set! continue? (and (handle-edit-task id argv) continue?))))

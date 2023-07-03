@@ -1,7 +1,8 @@
 #lang racket/base
 
 (provide
-    assert!! expect!!)
+    assert!! expect!!
+    if*)
 
 (define-syntax-rule
     (assert!! expr)
@@ -12,4 +13,6 @@
     (when (not expr)
         (raise (format fmt xs ...))))
 
-
+(define-syntax-rule
+    (if* test te fbody0 fbody ...)
+    (if test te (block fbody0 fbody ...)))

@@ -1,4 +1,4 @@
-#lang racket/base
+#lang typed/racket/base
 
 (require
     racket/match    racket/block
@@ -15,13 +15,16 @@
 (provide
     repl-eval)
 
+(: eval-task-loop : Task -> Boolean)
 (define (eval-task-loop t)
     (define id (task-id t))
+    (define user-me (assert (me)))
     (define res
-        (retry-until-success 
-            (prompt (format "eval ~a@~a~a" (user-display-name (me)) (dmpath->string) id))
+        (retry-until-success : (U Boolean 'loop)
+            (prompt (format "eval ~a@~a~a" (user-display-name user-me) (dmpath->string) id))
             (eof-barrier)
             (define argv (read-line-tokens))
+            (assert argv pair?)
             (match (car argv)
                 [(or "q" "quit") #f]
                 [(or "s" "skip") #t]
@@ -35,6 +38,8 @@
                  'loop]
                 [_ (handle-edit-task id (cons "e" argv)) #t])))
     (if (eq? 'loop res) (eval-task-loop t) res))
+
+(: repl-eval : (Listof Task) -> Void)
 (define (repl-eval remaining)
     (unless (empty? remaining) (block
         (define t (car remaining))

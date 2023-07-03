@@ -1,16 +1,20 @@
-#lang racket/base
+#lang typed/racket/base
 
 (require
     racket/string   racket/list
-        racket/function     racket/exn
+        racket/function
     racket/block    racket/match
     racket/file     racket/system   racket/port
     "../domain.rkt"
     "../model.rkt"
     "../utils.rkt"
     "../utils-untyped.rkt"
+    "../user.rkt"
     "utils-output.rkt")
+(require/typed racket/exn
+    [exn->string (exn -> String)])
 (provide 
+    CommandHandler
     (struct-out cmdentry)
         cmdentry-desc cmdentry-spacer
     repl-menu-switch
@@ -18,16 +22,25 @@
     prompt  prompt-multi    prompt-editor
     load    commit  commit-all  save-and-exit
     eof-barrier me  login
-    read-token  read-line-tokens)
+    read-line-tokens)
 
-(struct cmdentry (matchers help handler))
+(define-type CommandHandler (Index (Listof Any) -> Any))
+(struct cmdentry
+    ([matchers : (Listof (Option String))]
+     [help     : TableEntries]
+     [handler  : CommandHandler])
+    #:type-name CommandEntry)
+(: cmdentry-desc : TableEntries -> CommandEntry)
 (define (cmdentry-desc d) (cmdentry '() d void))
 (define cmdentry-spacer (cmdentry-desc '(("" "" ""))))
+
+(: repl-menu-switch : Index (Listof Any) (Option String) (Listof CommandEntry) -> Any)
 (define (repl-menu-switch argc argv cmd entries)
-    (let/cc return
+    (let/cc return : Any
         (when (or (equal? cmd "?")
                   (equal? cmd "help"))
-            (define help-entries (apply append (for/list ([entry entries]) (cmdentry-help entry))))
+            (define help-entries (apply append (for/list ([entry entries]) : (Listof TableEntries) 
+                                                    (cmdentry-help entry))))
             (return (print-table (append help-entries '(("" "" "") ("?" "help" "view this entry")))
                          '(0 0 0)
                          '(100 100 100)
@@ -40,16 +53,24 @@
                       (return (handler argc argv)))))
         (printf "Unrecognized command ~a. (? or help for a list)\n" cmd)))
 
-(define-syntax-rule
-    (retry-until-success body ...)
-    (let loop ()
-        (let* ([failed? #f]
-               [res (with-handlers
-                        ([exn:break? raise]
-                         [(const #t) (lambda (x) (eprintf "~a" (exn->string x))
-                                                 (set! failed? #t))])
-                        body ...)])
-            (if failed? (loop) res))))
+(define-syntax retry-until-success
+    (syntax-rules (:)
+        [(retry-until-success : T body ...)
+         (let loop : T ()
+            (let* ([failed? : Boolean #f]
+                   [res : (U T Void)
+                    (with-handlers
+                     ([exn:break? raise]
+                      [exn? (lambda ([x : exn]) (eprintf "~a" (exn->string x))
+                                                (set! failed? #t))])
+                     body ...)])
+                  (if failed? (loop) (cast res T))))]
+        [(retry-until-success body ...)
+         (retry-until-success : Void body ...)]))
+
+(: prompt (->* () ((Option String)) Void))
+(: prompt-multi : -> String)
+(: prompt-editor : String -> String)
 (define (prompt [str #f])
     (when str (display str))
     (printf "> ")
@@ -57,10 +78,10 @@
 (define (prompt-multi)
     (displayln "Empty line terminates input.")
     (prompt)
-    (let loop ((lines empty))
+    (let loop ((lines : (Listof String) empty))
         (define ln (read-line))
-        (if (zero? (string-length ln))
-            (string-join (reverse lines))
+        (if (or (eof-object? ln) (zero? (string-length ln)))
+            (string-join (reverse lines) "\n")
             (begin (prompt)
                    (loop (cons ln lines))))))
 (define (prompt-editor str) (block
@@ -70,36 +91,48 @@
     (define res (file->string tmp))
     (delete-file tmp)
     res))
-(define (read-token) (symbol->string (read)))
+
+(: read-line-tokens : -> (Listof Any))
 (define (read-line-tokens [in-port (current-input-port)])
     (define ln (read-line in-port))
+    (if (eof-object? ln) empty (block
     (define in (open-input-string ln "user input"))
     (define tks (port->list read in))
     (close-input-port in)
-    (map (lambda (x) (if (symbol? x) (symbol->string x) x))
-         tks))
+    (map (lambda ([x : Any]) (if (symbol? x) (symbol->string x) x))
+         tks))))
 
-(define (load) (domain/load (current-domain)))
-(define (commit) (domain/commit (current-domain)))
+(: load : -> Void)
+(: commit : -> Void)
+(: commit-all : -> Void)
+(: save-and-exit : -> Nothing)
+(define (load) (domain/load (assert (current-domain))))
+(define (commit) (domain/commit (assert (current-domain))))
 (define (commit-all)
     (for ([dmf (in-domain domain-tree-root)])
-        (domain/commit (domain-frame-in-domain dmf))))
+        (define dm (domain-frame-in-domain dmf))
+        (when dm (domain/commit dm))))
 (define (save-and-exit) (commit-all) (exit))
 
+(: eof-barrier (All (T) (->* () ((-> T)) (U Void T))))
+(: me : -> (Option User))
 (define (eof-barrier [action save-and-exit]) (when (eof-object? (peek-char)) (action)))
 (define (me)
-    (define logged-in (domain-cur-user (current-domain)))
+    (define dm (assert (current-domain)))
+    (define logged-in (domain-cur-user dm))
     (or logged-in
         (and (login)
-             (domain-cur-user (current-domain)))))
-(define (login) (let/cc return
-    (retry-until-success (block
+             (domain-cur-user dm))))
+(: login : -> Boolean)
+(define (login) (let/cc return : Boolean
+    (define dm (assert (current-domain)))
+    (retry-until-success : Boolean (block
         (prompt "login")
-        (eof-barrier (thunk* (return #f)))
+        (eof-barrier (thunk (return #f)))
         (define argv (read-line-tokens))
         (define argc (length argv))
         (assert!! (= 1 argc))
-        (domain/login (current-domain) (get-user-by-name (car argv)))
+        (domain/login dm (get-user-by-name (car (cast argv (List String)))))
         (printf "Logged in as ~a.\n" (car argv))
         #t))))
  
