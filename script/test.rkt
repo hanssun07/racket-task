@@ -20,25 +20,23 @@
         ;dir-event
         (append dir-events file-events)))
 
-(define (run)
-    (time (system cmdrun))
-    (block
-        (define changed (sync/enable-break 
-            (choice-evt
-                (wrap-evt (read-bytes!-evt (make-bytes 1) (current-input-port))
-                    (const "[requested]"))
-                (build-change-event watchdir))))
-        (printf "\n\nChanged: ~a\n" changed)
-        (match-define (date s m h _ _ _ _ _ _ _) (current-date))
-        (define (~t k) (~r k #:min-width 2 #:pad-string "0"))
-        (printf "\nRunning at ~a:~a:~a...\n" (~t h) (~t m) (~t s))
-        (printf "  $ ~a\n\n" cmdrun))
-    (collect-garbage 'major)
-    (run))
-    
-(block
+(define (make-watcher)
+    (let loop () (when (sync/timeout 0 (read-bytes!-evt (make-bytes 1) (current-input-port))) (loop)))
+    (choice-evt
+        (wrap-evt (read-bytes!-evt (make-bytes 1) (current-input-port))
+            (const "[requested]"))
+        (build-change-event watchdir)))
+
+(define (run) (block
     (match-define (date s m h _ _ _ _ _ _ _) (current-date))
     (define (~t k) (~r k #:min-width 2 #:pad-string "0"))
-    (printf "\n\nRunning at ~a:~a:~a...\n" (~t h) (~t m) (~t s))
-    (printf "  $ ~a\n\n" cmdrun))
-(run) 
+    (printf "\nRunning at ~a:~a:~a...\n" (~t h) (~t m) (~t s))
+    (printf "  $ ~a\n\n" cmdrun)
+    (time (system cmdrun))
+    (define evt (make-watcher))
+    (collect-garbage 'major)
+    (define changed (sync/enable-break evt))
+    (printf "\n\nChanged: ~a\n" changed)
+    (run)))
+    
+(run)
