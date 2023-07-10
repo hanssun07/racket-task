@@ -1,8 +1,14 @@
 #lang racket/base
 
+(require
+    racket/block
+    racket/function
+)
 (provide
     assert!! expect!!
-    if*)
+    if* if**
+    errorthunk
+)
 
 (define-syntax-rule
     (assert!! expr)
@@ -16,3 +22,11 @@
 (define-syntax-rule
     (if* test te fbody0 fbody ...)
     (if test te (block fbody0 fbody ...)))
+(define-syntax-rule
+    (if** test (tb ...) fb ...)
+    (if* test (block tb ...) fb ...))
+
+(define-syntax-rule
+    (errorthunk . args)
+    (thunk (error . args)))
+

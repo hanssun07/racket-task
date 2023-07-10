@@ -55,12 +55,13 @@
          (assert!! (not (task-done? t)))
          (task-done! t)]
         [(or "eval" "e")
+         (define cdrargv (cdr argv))
          (assert!! (<= 2 argc 4))
-         (with-casts ([argv : (Listof Eval-Rating)])
+         (with-casts ([cdrargv : (Listof Eval-Rating)])
          (define cur-user (assert (me)))
-         (user-set-interest! cur-user id (second argv))
-         (when (<= 3 argc) (user-set-priority! cur-user id (third argv)))
-         (when (<= 4 argc) (user-set-needs-refinement! cur-user id (fourth argv))))]
+         (user-set-interest! cur-user id (first cdrargv))
+         (when (<= 3 argc) (user-set-priority! cur-user id (second cdrargv)))
+         (when (<= 4 argc) (user-set-needs-refinement! cur-user id (third cdrargv))))]
         [(or "help" "?")
          (define helpmsg (list
             "cat show               show the task"

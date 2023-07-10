@@ -15,7 +15,7 @@
     register-task   get-task    next-task-id    task-count
     register-user
         get-user-by-id
-        get-user-by-name
+        get-user-by-name ?get-user-by-name
         next-user-id
         get-user-me
     (struct-out uteval)
@@ -33,7 +33,7 @@
     (domain/register-task ns t))
 (: get-task (->* (Task-ID) (DomainPath) Task))
 (define (get-task tid [dmpath empty])
-    (domain/get-task (resolve-domain dmpath) tid))
+    (domain/get-task (resolve-domain dmpath) tid (errorthunk "no task with id ~a" tid)))
 (: next-task-id (->* () (DomainPath) Task-ID))
 (define (next-task-id [dmpath empty])
     (domain/next-task-id (resolve-domain dmpath)))
@@ -48,11 +48,19 @@
 (: get-user-by-id (->* (User-ID) (DomainPath) User))
 (define (get-user-by-id uid [dmpath empty])
     (domain/get-user-by-id (resolve-domain dmpath) uid))
-(: get-user-by-name (All (T) (->* (String) (DomainPath (-> T)) (U T User))))
-(define (get-user-by-name name
-         [dmpath empty]
-         [failure-result (error-failthrough "no user by name ~a" name)])
-    (domain/get-user-by-name (resolve-domain dmpath) name failure-result))
+(: get-user-by-name : (case-> (String DomainPath -> User)
+                              (String            -> User)))
+(: ?get-user-by-name : (All (T) (case-> (String DomainPath (-> T) -> (U T User))
+                                        (String DomainPath        -> (Option User))
+                                        (String                   -> (Option User)))))
+(define (get-user-by-name name [dmpath empty])
+    (?get-user-by-name name dmpath (errorthunk "no user with name ~a" name)))
+(define ?get-user-by-name (case-lambda
+    [(name dmpath) 
+     (domain/get-user-by-name (resolve-domain dmpath) name)]
+    [(name) (?get-user-by-name name empty)]
+    [(name dmpath on-error)
+     (or (?get-user-by-name name dmpath) (on-error))]))
 (: next-user-id (->* () (DomainPath) User-ID))
 (define (next-user-id [dmpath empty])
     (domain/next-user-id (resolve-domain dmpath)))

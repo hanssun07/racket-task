@@ -1,45 +1,57 @@
 #lang typed/racket/base
 
 (require
+    ;(except-in type-expander let/cc for for/list)
+    (only-in type-expander : define-type-expander struct define-type let lambda)
     racket/string   racket/list
         racket/function
     racket/block    racket/match
     racket/file     racket/system   racket/port
+    "../types/racket-exn.rkt"
     "../domain.rkt"
     "../model.rkt"
     "../utils.rkt"
     "../utils-untyped.rkt"
     "../user.rkt"
     "utils-output.rkt")
-(require/typed racket/exn
-    [exn->string (exn -> String)])
 (provide 
     CommandHandler
+        CmdStr Argv Argv*
     (struct-out cmdentry)
         cmdentry-desc cmdentry-spacer
     repl-menu-switch
     retry-until-success
     prompt  prompt-multi    prompt-editor
     load    commit  commit-all  save-and-exit
-    eof-barrier me  login
+    eof-barrier ?me me login
     read-line-tokens)
 
-(define-type CommandHandler (Index (Listof Any) -> Any))
+(define-type CmdStr (Option String))
+(define-type-expander Argv
+    (syntax-rules ()
+        [(Argv a ...)
+         (Pair CmdStr (List a ...))]))
+(define-type-expander Argv*
+    (syntax-rules ()
+        [(Argv* a ...)
+         (List* CmdStr a ...)]))
+
+(define-type CommandHandler (Index (Argv* Any) -> Any))
 (struct cmdentry
-    ([matchers : (Listof (Option String))]
+    ([matchers : (Listof CmdStr)]
      [help     : TableEntries]
      [handler  : CommandHandler])
     #:type-name CommandEntry)
-(: cmdentry-desc : TableEntries -> CommandEntry)
+(: cmdentry-desc (TableEntries -> CommandEntry))
 (define (cmdentry-desc d) (cmdentry '() d void))
 (define cmdentry-spacer (cmdentry-desc '(("" "" ""))))
 
-(: repl-menu-switch : Index (Listof Any) (Option String) (Listof CommandEntry) -> Any)
+(: repl-menu-switch (Index (Argv* Any) CmdStr (Listof CommandEntry) -> Any))
 (define (repl-menu-switch argc argv cmd entries)
-    (let/cc return : Any
+    (let/cc return ;: Any
         (when (or (equal? cmd "?")
                   (equal? cmd "help"))
-            (define help-entries (apply append (for/list ([entry entries]) : (Listof TableEntries) 
+            (define help-entries (apply append (for/list ([entry entries]) ;: (Listof TableEntries) 
                                                     (cmdentry-help entry))))
             (return (print-table (append help-entries '(("" "" "") ("?" "help" "view this entry")))
                          '(0 0 0)
@@ -69,8 +81,8 @@
          (retry-until-success : Void body ...)]))
 
 (: prompt (->* () ((Option String)) Void))
-(: prompt-multi : -> String)
-(: prompt-editor : String -> String)
+(: prompt-multi (-> String))
+(: prompt-editor (String -> String))
 (define (prompt [str #f])
     (when str (display str))
     (printf "> ")
@@ -92,7 +104,7 @@
     (delete-file tmp)
     res))
 
-(: read-line-tokens : -> (Listof Any))
+(: read-line-tokens (-> (Listof Any)))
 (define (read-line-tokens [in-port (current-input-port)])
     (define ln (read-line in-port))
     (if (eof-object? ln) empty (block
@@ -102,10 +114,10 @@
     (map (lambda ([x : Any]) (if (symbol? x) (symbol->string x) x))
          tks))))
 
-(: load : -> Void)
-(: commit : -> Void)
-(: commit-all : -> Void)
-(: save-and-exit : -> Nothing)
+(: load (-> Void))
+(: commit (-> Void))
+(: commit-all (-> Void))
+(: save-and-exit (-> Nothing))
 (define (load) (domain/load (assert (current-domain))))
 (define (commit) (domain/commit (assert (current-domain))))
 (define (commit-all)
@@ -115,15 +127,21 @@
 (define (save-and-exit) (commit-all) (exit))
 
 (: eof-barrier (All (T) (->* () ((-> T)) (U Void T))))
-(: me : -> (Option User))
+(: ?me (All (F) (case-> (        -> (Option User))
+                        ((-> F)  -> (U User F)))))
+(: me (-> User))
 (define (eof-barrier [action save-and-exit]) (when (eof-object? (peek-char)) (action)))
-(define (me)
-    (define dm (assert (current-domain)))
-    (define logged-in (domain-cur-user dm))
-    (or logged-in
-        (and (login)
-             (domain-cur-user dm))))
-(: login : -> Boolean)
+(define ?me (case-lambda
+    [()
+     (define dm (assert (current-domain)))
+     (define logged-in (domain-cur-user dm))
+     (if* logged-in logged-in
+     (login)
+     (domain-cur-user dm))]
+    [(on-fail) (or (?me) (on-fail))]))
+(define (me) (?me (errorthunk "not logged in")))
+
+(: login (-> Boolean))
 (define (login) (let/cc return : Boolean
     (define dm (assert (current-domain)))
     (retry-until-success : Boolean (block

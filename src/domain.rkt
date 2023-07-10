@@ -1,20 +1,9 @@
 #lang typed/racket/base
 
-(require
-    "task.rkt"
-    "user.rkt"
-    "utils.rkt"
-    "types.rkt"
-    racket/match racket/block
-    racket/list racket/function
-    racket/port racket/pretty
-    racket/string
-    racket/file
-)
-
 (module domain/base typed/racket/base
     (require
         "task.rkt"  "user.rkt"  "utils.rkt" "types.rkt"
+        "utils-untyped.rkt"
         racket/match
         racket/list)
     (provide
@@ -28,7 +17,7 @@
         domain/users domain/tasks
         domain/login
         domain/register-task
-            domain/get-task
+            domain/get-task !domain/get-task
             domain/next-task-id
             domain/task-count
         domain/register-user
@@ -49,34 +38,55 @@
         #:mutable
         #:type-name Domain)
 
-    (define obj->domain : (Weak-HashTable Any Domain) (make-weak-hasheq))
+    (: obj->domain (Weak-HashTable Any Domain))
+    (: domain-of : Any -> Domain)
+    (: domain-register : Any Domain -> Void)
+    (define obj->domain (make-weak-hasheq))
     (define (domain-of x) (hash-ref obj->domain x))
-    (define (domain-register x [dm : Domain])
+    (define (domain-register x dm)
         (hash-set! obj->domain x dm))
 
+    (: make-domain : (case-> (Path-String -> Domain)
+                             (            -> Domain)))
     (define (make-domain [datafile : (Option Path-String) #f])
         (domain (make-hash) (make-hash) #f datafile (hash)))
 
-    (define (domain/users [dm : Domain]) (hash-values (domain-id->user dm)))
-    (define (domain/tasks [dm : Domain]) (hash-values (domain-id->task dm)))
+    (: domain/users : Domain -> (Listof User))
+    (: domain/tasks : Domain -> (Listof Task))
+    (define (domain/users dm) (hash-values (domain-id->user dm)))
+    (define (domain/tasks dm) (hash-values (domain-id->task dm)))
 
-    (define (domain/login [dm : Domain] [u : User])
+    (: domain/login : Domain User -> Void)
+    (define (domain/login dm u)
         (set-domain-cur-user! dm u))
 
-    (define (domain/register-task [dm : Domain] [t : Task]) : Void
-        (match-define (domain id->task _ _ _ _) dm)
+    (: domain/register-task : Domain Task -> Void)
+    (: domain/get-task (All (F) (case-> (Domain Task-ID        -> (Option Task))
+                                        (Domain Task-ID (-> F) -> (U F Task)))))
+    (: !domain/get-task : Domain Task-ID -> Task)
+    (: domain/next-task-id : Domain -> Task-ID)
+    (: domain/task-count : Domain -> Exact-Nonnegative-Integer)
+    (define (domain/register-task dm t)
+        (define id->task (domain-id->task dm))
         (define id (task-id t))
         (hash-set! id->task id t)
         (domain-register t dm))
-    (define (domain/get-task [dm : Domain] [id : Task-ID]) : Task
-        (match-define (domain id->task _ _ _ _) dm)
-        (hash-ref id->task id))
-    (define (domain/next-task-id [dm : Domain]) : Task-ID
-        (match-define (domain id->task _ _ _ _) dm)
+
+    (define domain/get-task (case-lambda
+        [(dm id)
+         (define id->task (domain-id->task dm))
+         (hash-ref id->task id #f)]
+        [(dm id on-fail)
+         (or (domain/get-task dm id) (on-fail))]))
+    (define (!domain/get-task dm id)
+        (domain/get-task dm id (errorthunk 'domain/get-task "no task with id ~a." id)))
+
+    (define (domain/next-task-id dm)
+        (define id->task (domain-id->task dm))
         (if (hash-empty? id->task) 0
             (add1 ((inst argmax Task-ID) values (hash-keys id->task)))))
 
-    (define (domain/task-count [dm : Domain]) : Exact-Nonnegative-Integer
+    (define (domain/task-count dm)
         (hash-count (domain-id->task dm)))
 
     (define (domain/register-user [dm : Domain] [u : User]) : Void
@@ -90,7 +100,7 @@
     (: domain/get-user-by-name
         (All (T) (->* (Domain String) ((-> T)) (U T User))))
     (define (domain/get-user-by-name dm name
-             [failure-result (error-failthrough "no user by name ~a" name)])
+             [failure-result (errorthunk 'domain/get-uesr-by-name "no user by name ~a" name)])
         (match-define (domain _ id->user _ _ _) dm)
         (define matches (filter (lambda ([u : User]) (equal? name (user-display-name u))) (hash-values id->user)))
         (if (empty? matches)

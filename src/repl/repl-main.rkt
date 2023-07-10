@@ -92,7 +92,7 @@
                      (assert!! (= 2 argc))
                      (with-casts ([argv : (List Any String)])
                      (define name (second argv))
-                     (assert!! (not (get-user-by-name name '() (const #f))))
+                     (assert!! (not (get-user-by-name name)))
                      (register-user (make-user (next-user-id) name))
                      (printf "User ~a registered.\n" name))))
         (cmdentry '("swap-user")

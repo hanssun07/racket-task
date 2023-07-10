@@ -2,22 +2,18 @@
 
 (require
     "types.rkt"
-    racket/list)
+    racket/list
+    racket/block)
 
 (provide
     with-casts
-    error-failthrough
     seconds-since-epoch
     list-uniq
     list-truncate Cardinality cardinal-infty)
 
-(define-syntax-rule
-    (with-casts ([x : T] ...) body0 body ...)
-    (let ([x : T (cast x T)] ...) body0 body ...))
-
-(: error-failthrough (String Any * -> (-> Nothing)))
-(define ((error-failthrough fmt . vs))
-    (error (apply format fmt vs)))
+(define-syntax with-casts (syntax-rules (:)
+    [(with-casts ([x : T] ...) body0 body ...)
+     (let ([x : T (cast x T)] ...) body0 body ...)]))
 
 (define (seconds-since-epoch) : Timestamp
     (cast (current-seconds) Timestamp))
