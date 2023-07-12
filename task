@@ -18,6 +18,6 @@ check() {
     git diff --staged --quiet && echo "No changes to commit." || git status
     popd >/dev/null
 }
-check foo/
-check bar/
-check baz/
+# check foo/
+# check bar/
+# check baz/

@@ -30,6 +30,6 @@ run() {
     fi
 }
 
-run foo/ git@github.com:example/foo.git
-run bar/ git@github.com:example/bar.git
-run baz/ git@github.com:example/baz.git -b tracker
+# run foo/ git@github.com:example/foo.git
+# run bar/ git@github.com:example/bar.git
+# run baz/ git@github.com:example/baz.git -b tracker
