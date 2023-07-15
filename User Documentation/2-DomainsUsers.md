@@ -67,7 +67,7 @@ You have also already created two GitHub repositories to allow for the tasks to 
 6. Finally, Elvarg runs `task-sync` to upload the changes to the shared repository.
 
 ## Using a Remote Task Domain
-Galvek and Vorkath can now each see the task domain on GitHub, and start tracking their progress. Let's focus on Galvek - for Vorkath it is similar.
+Galvek and Vorkath can now each see the task domain on GitHub, and start tracking their progress. Let's focus on Galvek - for Vorkath it is similar. 
 1. Galvek creates 2 folders in his computer to store the domains. Here is what the file structure could look like:
    ```
    |- baking-tasks
