@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require
+    "../utils/ann.rkt"
     racket/format   racket/string   racket/list
         racket/function     racket/exn
     racket/block    racket/match
@@ -20,6 +21,20 @@
     format-date
     print-table)
 
+(:typedef CmdStr (? String))
+(:typedef (Argv a ...) (List* CmdStr a ...))
+(:typedef Argc ExactNonnegativeInteger)
+(:typedef CmdHandler (Argc Argv -> Any))
+(:typedef TableRow (Listof String))
+(:typedef TableEntries (Listof TableRow))
+
+(:structdef cmdentry : CmdEntry
+    ([matchers : (Listof (? String))]
+     [help     : TableEntries]
+     [handler  : CmdHandler]))
+(: cmdentry-desc (TableEntries -> CmdEntry))
+(: cmdentry-spacer CmdEntry)
+(: repl-menu-switch (Argc Argv CmdStr (Listof CmdEntry) -> Any))
 (struct cmdentry (matchers help handler))
 (define (cmdentry-desc d) (cmdentry '() d void))
 (define cmdentry-spacer (cmdentry-desc '(("" "" ""))))
@@ -50,6 +65,14 @@
                                                  (set! failed? #t))])
                         body ...)])
             (if failed? (loop) res))))
+
+(: prompt (String -> Void) (-> Void))
+(: prompt-multi (-> (Listof String)))
+(: prompt-editor (String -> String))
+(: read-token (-> (U String (^ Exn:Fail:Contract))))
+(: read-line-tokens
+    (InputPort -> Argv)
+    (          -> Argv))
 (define (prompt [str #f])
     (when str (display str))
     (printf "> ")
@@ -79,6 +102,10 @@
     (map (lambda (x) (if (symbol? x) (symbol->string x) x))
          tks))
 
+(: load (-> Void))
+(: commit (-> Void))
+(: commit-all (-> Void))
+(: save-and-exit (-> Never))
 (define (load) (domain/load (current-domain)))
 (define (commit) (domain/commit (current-domain)))
 (define (commit-all)
@@ -86,6 +113,11 @@
         (domain/commit (domain-frame-in-domain dmf))))
 (define (save-and-exit) (commit-all) (exit))
 
+(: eof-barrier
+    ((-> t) -> (U Void t))
+    (       -> Void))
+(: me (-> (? User)))
+(: login (-> Bool))
 (define (eof-barrier [action save-and-exit]) (when (eof-object? (peek-char)) (action)))
 (define (me)
     (define logged-in (domain-cur-user (current-domain)))
@@ -103,6 +135,8 @@
         (printf "Logged in as ~a.\n" (car argv))
         #t))))
  
+(: format-date (Date -> String))
+(: print-table (TableEntries (Listof ExactNonnegativeIntegers) x4 -> Void))
 (define (format-date dt)
     (define (~00 x) (~r x #:min-width 2 #:pad-string "0"))
     (match-define (date _ _ _ d m y _ _ _ _) (seconds->date dt))

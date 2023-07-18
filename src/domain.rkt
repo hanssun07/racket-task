@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require
+    "utils/ann.rkt"
     "task.rkt"
     "user.rkt"
     "utils.rkt"
@@ -50,6 +51,12 @@
         string->itempath    string->dmpath
         dmpath->string)
 
+(:structdef domain : Domain
+    ([id->task     : (MHash TaskId Task)]
+     [id->user     : (MHash UserId User)]
+     [cur-user     : (? User)]
+     [datafile     : (? PathString)]
+     [user-aliases : (MHash String String)]))
 (struct domain
     (id->task
      id->user
@@ -58,24 +65,31 @@
      user-aliases)
     #:mutable)
 
+(: obj->domain (MHashWeakEq Any Domain))
+(: domain-of (Any -> (U Domain (^ Exn:Fail))))
+(: domain-register (Any Domain -> Void))
 (define obj->domain (make-weak-hasheq))
 (define (domain-of x) (hash-ref obj->domain x))
 (define (domain-register x dm)
     (assert!! (domain? dm))
     (hash-set! obj->domain x dm))
 
-(define atomic-user-id? string?)
-(define atomic-task-id? exact-nonnegative-integer?)
-
+(: make-domain
+    (String -> Domain)
+    (       -> Domain))
 (define (make-domain [datafile #f])
     (domain (make-hash) (make-hash) #f datafile (hash)))
 
+(: domain/users (Domain -> (Listof User)))
+(: domain/tasks (Domain -> (Listof Task)))
 (define (domain/users dm) (hash-values (domain-id->user dm)))
 (define (domain/tasks dm) (hash-values (domain-id->task dm)))
 
+(: domain/login (Domain User -> Void))
 (define (domain/login dm u)
     (set-domain-cur-user! dm u))
 
+(: domain/load (Domain -> Void))
 (define (domain/load dm) (block
     (match-define (domain id->task id->user _ datafile _) dm)
     (hash-clear! id->task)
@@ -86,7 +100,7 @@
     (if (number? (first data))
         (domain/load/v1 dm (cdr data))
         (domain/load/v0 dm data))))
-    
+
 (define (domain/load/v1 dm data)
     (match-define (domain _ _ cur-user _ _) dm)
     (define tasks (first data))
@@ -110,6 +124,7 @@
             (task-assign! task (user-id (domain/get-user-by-name dm (task-assigned-to task))))))
     (when cur-user (domain/login dm (user-id cur-user))))
 
+(: domain/commit (Domain -> Void))
 (define (domain/commit dm)
     (match-define (domain id->task id->user cur-user datafile _) dm)
     (call-with-atomic-output-file datafile (lambda (out tmppath)
@@ -118,6 +133,9 @@
         (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)))
         (pretty-write (map user->datum (sort (hash-values id->user) < #:key user-id)))))))
 
+(: domain/register-task (Domain Task -> Void))
+(: domain/get-task (Domain TaskId -> (U Task (^ Exn:Fail))))
+(: domain/next-task-id (Domain -> TaskId))
 (define (domain/register-task dm t)
     (match-define (domain id->task _ _ _ _) dm)
     (define id (task-id t))
@@ -131,9 +149,17 @@
     (if (hash-empty? id->task) 0
         (add1 (argmax values (hash-keys id->task)))))
 
+(: domain/task-count (Domain -> ExactNonnegativeInteger))
 (define (domain/task-count dm)
     (hash-count (domain-id->task dm)))
 
+(: domain/register-user (Domain User -> Void))
+(: domain/get-user-by-id (Domain UserId -> (U User (^ Exn:Fail))))
+(: domain/get-user-by-name
+    (Domain String (-> f) -> (U User f))
+    (Domain String f      -> (U User f))
+    (Domain String        -> (U User (^ Exn:Fail))))
+(: domain/next-user-id (Domain -> UserId))
 (define (domain/register-user dm u)
     (match-define (domain _ id->user _ _ _) dm)
     (define id (user-id u))
@@ -154,12 +180,19 @@
     (if (hash-empty? id->user) 0
         (add1 (argmax values (hash-keys id->user)))))
 
+(: user-display-name (User -> String))
 (define (user-display-name u)
     (hash-ref (domain-user-aliases (domain-of u))
               (user-name u)
               (user-name u)))
 
 
+(:structdef domain-frame : DomainFrame
+    ([in-domain  : (? Domain)]
+     [subdomains : (MHash Symbol DomainFrame)]
+     [path       : (Listof Symbol)]
+     [parent     : (? DomainFrame)]))
+(: domain-tree-root DomainFrame)
 (struct domain-frame
     (in-domain
      subdomains
@@ -172,16 +205,38 @@
      (make-hash)
      empty #f))
 
+(:typedef DomainPath (Listof Symbol))
+(:structdef itempath : ItemPath
+    ([dmpath : Domainpath]
+     [id     : Any]))
 (define dmpath? (listof symbol?))
 (struct itempath (dmpath id) #:transparent)
 
+(: current-domain-frame
+    (Parameter DomainFrame)
+    (-> DomainFrame)
+    (DomainFrame -> Void))
+(: current-domain (-> Domain))
+(: home-domain-frame
+    (Parameter DomainFrame)
+    (-> DomainFrame)
+    (DomainFrame -> Void))
 (define current-domain-frame (make-parameter domain-tree-root))
 (define (current-domain) (domain-frame-in-domain (current-domain-frame)))
 (define home-domain-frame (make-parameter domain-tree-root))
 
+(: resolve-domain
+    (DomainPath DomainFrame -> (U Domain (^ Exn:Fail)))
+    (DomainPath             -> (U Domain (^ Exn:Fail))))
 (define (resolve-domain dmpath [dmf (current-domain-frame)])
     (domain-frame-in-domain (resolve-domain-frame dmpath dmf)))
 
+(: resolve-domain-frame
+    (DomainPath DomainFrame -> (U DomainFrame (^ Exn:Fail)))
+    (Domainpath             -> (U DomainFrame (^ Exn:Fail))))
+(: resolve-domain-frame!
+    (DomainPath DomainFrame -> (U DomainFrame (^ Exn:Fail)))
+    (Domainpath             -> (U DomainFrame (^ Exn:Fail))))
 (define (resolve-domain-frame dmpath [dmf (current-domain-frame)])
     (define (further-resolve dmpath dmf)
         (if (empty? dmpath) dmf (block
@@ -223,12 +278,19 @@
         [`(~ . ,rest) (further-resolve rest (home-domain-frame))]
         [`(|| . ,rest) (further-resolve rest domain-tree-root)]
         [_ (further-resolve dmpath dmf)]))
+
+(: register-domain
+    (DomainPath Domain DomainFrame -> Void)
+    (Domainpath Domain             -> Void))
 (define (register-domain dmpath dm [dmf (current-domain-frame)])
     (assert!! (dmpath? dmpath))
     (assert!! (domain? dm))
     (define frame (resolve-domain-frame! dmpath dmf))
     (set-domain-frame-in-domain! frame dm))
 
+(: in-domain
+    (DomainFrame -> (Sequenceof DomainFrame))
+    (            -> (Sequenceof DomainFrame)))
 (define (in-domain [dmf (current-domain-frame)])
     (in-generator
         (define (rec-run dmf)
@@ -239,6 +301,9 @@
             (for-each rec-run children))
         (rec-run dmf)))
 
+(: string->itempath (String -> (U ItemPath (^ Exn:Fail))))
+(: string->dmpath (String -> (U DomainPath (^ Exn:Fail))))
+(: dmpath->string (DomainPath -> String))
 (define (string->itempath str) (block
     (define split (string-split str ":" #:trim? #f))
     (define-values (path id)
@@ -254,6 +319,10 @@
 (define (dmpath->string [dmpath (domain-frame-path (current-domain-frame))])
     (string-append (string-join (map symbol->string dmpath) "/") ":"))
 
+(: select-domain
+    (DomainPath DomainFrame -> Void)
+    (DomainPath             -> Void))
+(: select-domain-from-root (DomainPath -> Void))
 (define (select-domain dmpath [dmf (current-domain-frame)])
     (define selected (resolve-domain-frame dmpath dmf))
     (assert!! selected)
