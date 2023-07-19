@@ -1,15 +1,15 @@
 #lang racket/base
 
 (provide
-    : :typedef :structdef
-)
+    : :typedef :structdef)
 
 (define-syntax-rule
-    (: args ...)
+    (: name types ...)
     (begin))
 (define-syntax-rule
-    (:typedef args ...)
+    (:typedef cons type)
     (begin))
-(define-syntax-rule
-    (:structdef args ...)
-    (begin))
+(define-syntax :structdef
+    (syntax-rules (:)
+        [(_ name : tname ([fname : ftype] ...))
+         (begin)]))
