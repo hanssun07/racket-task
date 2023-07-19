@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require
+    "utils/ann.rkt"
     "task.rkt"
     "user.rkt"
     "utils.rkt"
@@ -25,6 +26,10 @@
     query-tasks
         filter-by   sort-by)
 
+(: register-task (Task -> Void))
+(: get-task (TaskId -> (U Task (^ Exn:Fail))))
+(: next-task-id (-> TaskId))
+(: task-count (-> ExactNonnegativeInteger))
 (define (register-task t [dmpath empty])
     (define ns (resolve-domain dmpath))
     (domain/register-task ns t))
@@ -35,6 +40,14 @@
 (define (task-count [dmpath empty])
     (domain/task-count (resolve-domain dmpath)))
 
+(: register-user (User -> Void))
+(: get-user-by-id (UserId -> (U User (^ Exn:Fail))))
+(: get-user-by-name
+    (String DomainPath (-> f) -> (U User f))
+    (String DomainPath f      -> (U User f))
+    (String                   -> (U User (^ Exn:Fail))))
+(: next-user-id (-> UserId))
+(: get-user-me (-> (? User)))
 (define (register-user u [dmpath empty])
     (define ns (resolve-domain dmpath))
     (domain/register-user ns u))
@@ -49,6 +62,11 @@
 (define (get-user-me [dmpath empty])
     (domain-cur-user (resolve-domain dmpath)))
 
+(:structdef uteval : EvalRecord
+    ([interest      : (? UserEval)]
+     [priority      : (? UserEval)]
+     [needs-refinement : (? UserEval)]))
+(: get-user-task-evals (User Task -> EvalRecord))
 (struct uteval (interest priority needs-refinement))
 (define (get-user-task-evals u t)
     (assert!! (task? t))
@@ -57,7 +75,8 @@
     (uteval (user-interest u (task-id t))
             (user-priority u (task-id t))
             (user-task-needs-refinement? u (task-id t))))
-    
+
+(: get-task-evals (Task -> (Hash User EvalRecord)))
 (define (get-task-evals t)
     (assert!! (task? t))
     (define users (domain/users (domain-of t)))
@@ -65,6 +84,7 @@
         (values (user-id u)
                 (get-user-task-evals u t))))
 
+(: get-task-priority (Task -> NonnegativeNumber))
 (define (get-task-priority t)
     (assert!! (task? t))
     (define evals (get-task-evals t))
@@ -72,6 +92,7 @@
     (if (empty? vals) #f
         (/ (apply + vals) (length vals))))
 
+(: get-user-task-assignment-index (User Task -> NonnegativeNumber))
 (define (get-user-task-assignment-index u t)
     (assert!! (task? t))
     (assert!! (user? u))
@@ -87,6 +108,9 @@
         (or mine-value 0)
         (or base-value 0)))
 
+(: filter-by ((Any -> Any) * -> Filterer))
+(: sort-by ((Any Any -> Bool) (Any -> Any) * -> Sorter))
+(: query-tasks ((U Filterer Sorter) -> (Listof Task)))
 (struct _filter-by (pred))
 (define (filter-by . fns)
     (_filter-by (apply compose fns)))
@@ -112,6 +136,7 @@
                (map _sort-by-key sorters)))
     after-sort)
 
+(: user-needs-eval-task? (User Task -> Bool))
 (define (user-needs-eval-task? u t)
     (assert!! (task? t))
     (assert!! (user? u))
