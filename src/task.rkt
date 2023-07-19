@@ -16,13 +16,13 @@
 
 (:typedef TaskId ExactNonnegativeInteger)
 (:structdef task : Task
-    [id : TaskId]
-    [title : String]
-    [desc : (? String)]
-    [ready-by : (? TimeStamp)]
-    [started-by : (? TimeStamp)]
-    [assigned-to : (? UserId)]
-    [done-by : (? TimeStamp)])
+    ([id : TaskId]
+     [title : String]
+     [desc : (? String)]
+     [ready-by : (? TimeStamp)]
+     [started-by : (? TimeStamp)]
+     [assigned-to : (? UserId)]
+     [done-by : (? TimeStamp)]))
 (struct task
     (id
      title
