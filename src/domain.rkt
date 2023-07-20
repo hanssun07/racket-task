@@ -49,7 +49,9 @@
     itempath?
         itempath-dmpath itempath-id
         string->itempath    string->dmpath
-        dmpath->string)
+        dmpath->string
+    dmpath-relative-from
+        dmpath-relative-from-dmpaths)
 
 (:structdef domain : Domain
     ([id->task     : (MHash TaskId Task)]
@@ -318,6 +320,15 @@
 (define (string->dmpath str) (itempath-dmpath (string->itempath str)))
 (define (dmpath->string [dmpath (domain-frame-path (current-domain-frame))])
     (string-append (string-join (map symbol->string dmpath) "/") ":"))
+
+(: dmpath-relative-from (DomainFrame DomainFrame -> DomainPath))
+(: dmpath-relative-from-dmpaths (DomainPath DomainPath -> DomainPath))
+(define (dmpath-relative-from dmf-a dmf-b)
+    (dmpath-relative-from-dmpaths (domain-frame-path dmf-a) (domain-frame-path dmf-b)))
+(define (dmpath-relative-from-dmpaths dmpath-a dmpath-b)
+    (define-values (rel-a rel-b) (drop-common-prefix dmpath-a dmpath-b))
+    (append (map (const '..) rel-b) rel-a))
+    
 
 (: select-domain
     (DomainPath DomainFrame -> Void)
