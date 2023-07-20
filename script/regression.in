@@ -1,5 +1,7 @@
 l
 hans
+ed (0 10 18 22 27 35) d
+l
 cat 0
 n "qoweihtasg;lk"
 ed 0
@@ -9,4 +11,5 @@ q
 eval
 1 1 1
 :
+?
 q!    
