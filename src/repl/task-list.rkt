@@ -58,6 +58,8 @@
 (define repl-summary-help '(
     (":" "summary" "get a summary of assigned, pending tasks")))
 (define (repl-summary-handler argc argv) 
+    (define rel-dmpath-to (let ([here (current-domain-frame)])
+        (lambda (dmf) (dmpath-relative-from dmf here))))
     (define tasks-assigned (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
@@ -67,7 +69,7 @@
                                  (filter-by task-assigned?)
                                  (filter-by not task-done?))
                     empty))
-            (define dmstr (dmpath->string (domain-frame-path dmf)))
+            (define dmstr (dmpath->string (rel-dmpath-to dmf)))
             (map (curry cons dmstr)
                  (map task->summaryrow tasks))))))
     (define tasks-awaiting-eval (apply append
@@ -86,7 +88,7 @@
                                  (filter-by task-ready?)
                                  (filter-by not task-assigned?))
                     empty))
-            (define dmstr (dmpath->string (domain-frame-path dmf)))
+            (define dmstr (dmpath->string (rel-dmpath-to dmf)))
             (set! num-tasks-pending (+ num-tasks-pending (length tasks)))
             (map (curry cons dmstr)
                  (map task->summaryrow (list-truncate tasks 5)))))))
