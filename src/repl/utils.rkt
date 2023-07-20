@@ -2,6 +2,7 @@
 
 (require
     "../utils/ann.rkt"
+    "../utils/gregor.rkt"
     racket/format   racket/string   racket/list
         racket/function     racket/exn
     racket/block    racket/match
@@ -135,12 +136,10 @@
         (printf "Logged in as ~a.\n" (car argv))
         #t))))
  
-(: format-date (Date -> String))
+(: format-date (Moment -> String))
 (: print-table (TableEntries (Listof ExactNonnegativeIntegers) x4 -> Void))
 (define (format-date dt)
-    (define (~00 x) (~r x #:min-width 2 #:pad-string "0"))
-    (match-define (date _ _ _ d m y _ _ _ _) (seconds->date dt))
-    (format "~a-~a-~a" y (~00 m) (~00 d)))
+    (~t dt "y-MM-dd"))
 (define (print-table tab min-widths max-widths gutters aligns
             #:ncols [ncols (length min-widths)]
             #:elide-repeated? [elide-repeated?s (make-list ncols #f)])

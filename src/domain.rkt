@@ -2,6 +2,7 @@
 
 (require
     "utils/ann.rkt"
+    "utils/gregor.rkt"
     "task.rkt"
     "user.rkt"
     "utils.rkt"
@@ -100,10 +101,13 @@
     (define data (port->list read in))
     (close-input-port in)
     (if (number? (first data))
-        (domain/load/v1 dm (cdr data))
+        ((cadr (assoc (first data)
+                      `((1 ,domain/load/v1)
+                        (2 ,domain/load/v2))))
+         dm (cdr data))
         (domain/load/v0 dm data))))
 
-(define (domain/load/v1 dm data)
+(define (domain/load/v2 dm data)
     (match-define (domain _ _ cur-user _ _) dm)
     (define tasks (first data))
     (define users (second data))
@@ -113,25 +117,38 @@
         (domain/register-user dm (datum->user (cons id (cdr user)))))
     (when cur-user (domain/login dm (user-id cur-user))))
 
+(define (domain/load/v1 dm data)
+    (match-define (domain _ _ cur-user _ _) dm)
+    (define tasks (first data))
+    (define users (second data))
+    (domain/load/v2 dm (list
+        (for/list ([task tasks])
+            (match-define (list id title desc rb sb at db) task)
+            (list id title desc
+                  (and rb (moment->datum (posix->moment rb)))
+                  (and sb (moment->datum (posix->moment sb)))
+                  at
+                  (and db (moment->datum (posix->moment db)))))
+        users)))
+
 (define (domain/load/v0 dm data)
     (match-define (domain _ _ cur-user _ _) dm)
     (define tasks (first data))
     (define users (second data))
-    (for ((task tasks))
-        (domain/register-task dm (datum->task task)))
-    (for ((user users) (id (in-naturals)))
-        (domain/register-user dm (datum->user (cons id user))))
-    (for ((task (hash-values (domain-id->task dm))))
-        (when (task-assigned-to task)
-            (task-assign! task (user-id (domain/get-user-by-name dm (task-assigned-to task))))))
-    (when cur-user (domain/login dm (user-id cur-user))))
+    (define usernames (map first users))
+    (domain/load/v1 dm (list
+        (for/list ([task tasks])
+            (match-define (list title desc rb sb at db) task)
+            (list title desc rb sb (and at (index-of usernames at))))
+        (for/list ([user users] [i (in-naturals)])
+            (cons i user)))))
 
 (: domain/commit (Domain -> Void))
 (define (domain/commit dm)
     (match-define (domain id->task id->user cur-user datafile _) dm)
     (call-with-atomic-output-file datafile (lambda (out tmppath)
       (parameterize ([current-output-port out])
-        (pretty-write 1)
+        (pretty-write 2)
         (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)))
         (pretty-write (map user->datum (sort (hash-values id->user) < #:key user-id)))))))
 
