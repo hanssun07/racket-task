@@ -45,7 +45,7 @@
          (task-assign! t u))]
         [(or "done" "d" "finish" "fin" "f")
          (assert!! (= 1 argc))
-         (assert!! (task-assigned? t))
+         ;(assert!! (task-assigned? t))
          (assert!! (not (task-done? t)))
          (task-done! t)]
         [(or "eval" "e") (block

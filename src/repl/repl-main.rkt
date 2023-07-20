@@ -36,12 +36,16 @@
                      (new-task (second argv))))
         (cmdentry '("ed" "edit" "edit-task")
                   '(("ed" "edit-task <id>" "enter editing mode for task <id>")
-                    (""   "          <id> <cmd>" "    run <cmd> in editing mode for the task"))
+                    (""   "          <id> <cmd>" "    run <cmd> in editing mode for the task")
+                    (""   "          (<id> ...) <cmd>" "    run for all <id>s"))
                   (thunk*
                      (assert!! (<= 2 argc))
                      (if (= argc 2) 
                          (repl-edit (second argv))
-                         (handle-edit-task (second argv) (cddr argv)))))
+                         (if (list? (second argv))
+                             (for ([i (second argv)])
+                                 (handle-edit-task i (cddr argv)))
+                             (handle-edit-task (second argv) (cddr argv))))))
         (cmdentry '("cat" "show" "show-task" "view" "view-task")
                   '(("cat" "view-task <id>" "view details of a task"))
                   (thunk*
