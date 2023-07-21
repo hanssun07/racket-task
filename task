@@ -12,7 +12,7 @@ echo
 
 check() {
     pushd . >/dev/null
-    cd $1
+    cd "$1"
     echo -n "$1: "
     git add data.dat
     git diff --staged --quiet && echo "No changes to commit." || git status
