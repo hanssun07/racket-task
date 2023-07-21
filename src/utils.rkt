@@ -2,14 +2,15 @@
 
 (require
     "utils/ann.rkt"
-    racket/list
+    racket/list racket/function
     racket/block)
 
 (provide assert!! expect!!
     error-failthrough
     if* if**
     list-uniq
-    list-truncate)
+    list-truncate
+    datum-rec-transform)
 
 (: assert!! (Bool -> (U Void (^ Exn:Fail))))
 (define-syntax-rule
@@ -24,11 +25,11 @@
         (raise (format fmt xs ...))))
 
 (: error-failthrough
-    (String              -> (^ Exn:Fail))
-    (String Any          -> (^ Exn:Fail))
-    (Symbol String Any * -> (^ Exn:Fail)))
+    (String              -> (-> (^ Exn:Fail)))
+    (String Any          -> (-> (^ Exn:Fail)))
+    (Symbol String Any * -> (-> (^ Exn:Fail))))
 (define ((error-failthrough . args))
-    (error args))
+    (apply error args))
 
 (define-syntax-rule
     (if* test texp fbody0 fbody ...)
@@ -52,3 +53,8 @@
 (define (list-truncate lst [n (in-naturals 0)])
     (for/list ([x lst] [_ n]) x))
 
+(: datum-rec-transform (Any (Any -> Any) -> Any))
+(define (datum-rec-transform datum fn)
+    (if (list? datum)
+        (map (curryr datum-rec-transform fn) datum)
+        (fn datum)))
