@@ -2,10 +2,12 @@
 
 (require
     "utils/ann.rkt"
-    racket/list)
+    racket/list
+    racket/block)
 
 (provide assert!! expect!!
     error-failthrough
+    if* if**
     list-uniq
     list-truncate)
 
@@ -27,6 +29,14 @@
     (Symbol String Any * -> (^ Exn:Fail)))
 (define ((error-failthrough . args))
     (error args))
+
+(define-syntax-rule
+    (if* test texp fbody0 fbody ...)
+    (if test texp (block fbody0 fbody ...)))
+
+(define-syntax-rule
+    (if** test (tbody0 tbody ...) fbody0 fbody ...)
+    (if test (block tbody0 tbody ...) (block fbody0 fbody ...)))
 
 (: list-uniq ((Listof a) -> (Listof a)))
 (define (list-uniq lst)
