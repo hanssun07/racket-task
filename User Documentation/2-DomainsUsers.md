@@ -11,7 +11,7 @@ Say you are Elvarg, and you want to get together with your friends Vorkath and G
 You have also already created two GitHub repositories to allow for the tasks to be shared, and copied down the clone link. However, they are both empty.
 
 ## Setting Up Domains and Users
-1. Elvarg needs to create two folders on her computer, each of which containing a copy of `empty-domain.dat`. However, the files can be renamed to whatever she wants. These are the domains!
+1. Elvarg needs to create two folders on her computer, each of which containing a copy of `empty-domain.dat`. Name it `data.dat`. Elvarg would also initialize these as git repositories.
     > You could also just create the .dat file, if you want. Here's what's in there to start:
     >  ```
     >  ()
