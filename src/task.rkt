@@ -3,11 +3,13 @@
 (require
     "utils/ann.rkt"
     "utils/gregor.rkt"
-    racket/match)
+    "utils.rkt"
+    racket/match
+    racket/list)
 (provide
     make-task   task?
     task-id task-title  task-desc
-    task-ready-by   task-started-by task-assigned-to    task-done-by
+    task-ready-by   task-assigned-by task-assigned-to    task-done-by
     task-set-title!
     task-set-desc!
     task-block!
@@ -20,22 +22,17 @@
     ([id : TaskId]
      [title : String]
      [desc : (? String)]
-     [ready-by : (? Moment)]
-     [started-by : (? Moment)]
-     [assigned-to : (? UserId)]
-     [done-by : (? Moment)]))
+     [attrs : (MHash Symbol (Listof Any))]))
 (struct task
     (id
      title
      desc
-     ready-by
-     started-by
-     assigned-to
-     done-by) #:mutable)
+     attrs)
+    #:mutable)
 
 (: make-task (TaskId String -> Task))
 (define (make-task id title)
-    (task id title #f (now/moment) #f #f #f))
+    (task id title #f (make-hash `((ready ,(now/moment))))))
 
 (: task-set-title! (Task String -> Void))
 (define task-set-title! set-task-title!)
@@ -43,47 +40,84 @@
 (: task-set-desc! (Task (? String) -> Void))
 (define task-set-desc! set-task-desc!)
 
+(: task-ref-attr (Task Symbol (-> f) -> (U f (Listof a)))
+                 (Task Symbol f      -> (U f (Listof a)))
+                 (Task Symbol        -> (? (Listof a))))
+(define (task-ref-attr t attr [on-fail #f])
+    (hash-ref (task-attrs t) attr on-fail))
+
+(: task-set-attr! (Task Symbol Any -> Void))
+(define (task-set-attr! t attr v)
+    (hash-set! (task-attrs t) attr v))
+
+(: task-update-attr! (Task Symbol (v -> v) (-> f) -> (U f Void))
+                     (Task Symbol (v -> v) f      -> Void)
+                     (Task Symbol (v -> v)        -> (U Void (^ Exn:Fail))))
+(define (task-update-attr! t attr updater
+        [on-fail (error-failthrough 'task-update-attr! "no attribute ~a to update on task ~a"
+                                    attr (task-id t))])
+    (hash-update! (task-attrs t) attr updater on-fail))
+
+(: task-remove-attr! (Task Symbol -> Void))
+(define (task-remove-attr! t attr)
+    (hash-remove! (task-attrs t) attr))
 
 (: task-block! (Task -> Void))
-(define (task-block! t) (set-task-ready-by! t #f))
+(define (task-block! t) (task-remove-attr! t 'ready))
 
 (: task-ready! (Task -> Void))
-(define (task-ready! t) (set-task-ready-by! t (now/moment)))
+(: task-ready? (Task -> Bool))
+(: task-ready-by (Task (-> f) -> (U Moment f))
+                 (Task f      -> (U Moment f))
+                 (Task        -> (U Moment (^ Exn:Fail))))
+(define (task-ready! t) (task-set-attr! t 'ready (list (now/moment))))
+(define (task-ready? t) (task-ref-attr t 'ready))
+(define (task-ready-by t
+        [on-fail (error-failthrough 'task-ready-by "task ~a is not ready" (task-id t))])
+    (define res (task-ref-attr t 'ready))
+    (if res (car res) (if (procedure? on-fail) (on-fail) on-fail)))
 
 (: task-assign! (Task UserId -> Void))
-(define (task-assign! t user)
-    (set-task-assigned-to! t user)
-    (set-task-started-by! t (now/moment)))
+(: task-assigned? (Task -> Bool))
+(: task-assigned-by (Task (-> f) -> (U Moment f))
+                    (Task f      -> (U Moment f))
+                    (Task        -> (U Moment (^ Exn:Fail))))
+(: task-assigned-to (Task (-> f) -> (U UserId f))
+                    (Task f      -> (U UserId f))
+                    (Task        -> (U Userid (^ Exn:Fail))))
+(define (task-assign! t uid) (task-set-attr! t 'assigned (list uid (now/moment))))
+(define (task-assigned? t) (task-ref-attr t 'assigned))
+(define (task-assigned-by t
+        [on-fail (error-failthrough 'task-assigned-by "task ~a is not assigned" (task-id t))])
+    (define res (task-ref-attr t 'assigned))
+    (if res (second res) (if (procedure? on-fail) (on-fail) on-fail)))
+(define (task-assigned-to t
+        [on-fail (error-failthrough 'task-assigned-to "task ~a is not assigned" (task-id t))])
+    (define res (task-ref-attr t 'assigned))
+    (if res (first res) (if (procedure? on-fail) (on-fail) on-fail)))
 
 (: task-done! (Task -> Void))
-(define (task-done! t)
-    (set-task-done-by! t (now/moment)))
-
-
-(: task-ready? (Task -> Bool))
-(define task-ready? task-ready-by)
-
-(: task-assigned? (Task -> Bool))
-(define task-assigned? task-assigned-to)
-
 (: task-done? (Task -> Bool))
-(define task-done? task-done-by)
+(: task-assigned-by (Task (-> f) -> (U Moment f))
+                    (Task f      -> (U Moment f))
+                    (Task        -> (U Moment (^ Exn:Fail))))
+(define (task-done! t) (task-set-attr! t 'done (list (now/moment))))
+(define (task-done? t) (task-ref-attr t 'done))
+(define (task-done-by t
+        [on-fail (error-failthrough 'task-done-by "task ~a is not done" (task-id t))])
+    (define res (task-ref-attr t 'done))
+    (if res (car res) (if (procedure? on-fail) (on-fail) on-fail)))
 
 
 (: task->datum (Task -> Any))
 (define (task->datum t)
-    (match-define (task id title desc rb sb at db) t)
+    (match-define (task id title desc attrs) t)
     (list id title desc 
-        (and rb (moment->datum rb))
-        (and sb (moment->datum sb))
-        at
-        (and db (moment->datum db))))
+        (sort (hash->list attrs)
+              symbol<? #:key car)))
 
 (: datum->task (Any -> (U Task (^ Exn:Fail:Contract))))
 (define (datum->task d)
-    (match-define (list id title desc rb sb at db) d)
-    (task id title desc 
-        (and rb (datum->moment rb))
-        (and sb (datum->moment sb))
-        at
-        (and db (datum->moment db))))
+    (match-define (list id title desc attrs) d)
+    (task id title desc (make-hash (datum-rec-transform attrs
+                                    (lambda (x) (or (datum->moment x) x))))))

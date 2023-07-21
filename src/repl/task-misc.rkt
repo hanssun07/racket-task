@@ -28,7 +28,7 @@
         (printf "  Ready ~a.\n" (format-date (task-ready-by t))))
     (when (task-assigned? t)
         (define u (user-display-name (get-user-by-id (task-assigned-to t))))
-        (printf "  Assigned ~a to ~a.\n" (format-date (task-started-by t)) u))
+        (printf "  Assigned ~a to ~a.\n" (format-date (task-assigned-by t)) u))
     (when (task-done? t) 
         (printf "  Completed ~a.\n" (format-date (task-done-by t))))
     (unless (task-ready? t)

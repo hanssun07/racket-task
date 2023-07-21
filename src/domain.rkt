@@ -103,11 +103,12 @@
     (if (number? (first data))
         ((cadr (assoc (first data)
                       `((1 ,domain/load/v1)
-                        (2 ,domain/load/v2))))
+                        (2 ,domain/load/v2)
+                        (3 ,domain/load/v3))))
          dm (cdr data))
         (domain/load/v0 dm data))))
 
-(define (domain/load/v2 dm data)
+(define (domain/load/v3 dm data)
     (match-define (domain _ _ cur-user _ _) dm)
     (define tasks (first data))
     (define users (second data))
@@ -117,8 +118,19 @@
         (domain/register-user dm (datum->user (cons id (cdr user)))))
     (when cur-user (domain/login dm (user-id cur-user))))
 
+(define (domain/load/v2 dm data)
+    (define tasks (first data))
+    (define users (second data))
+    (domain/load/v3 dm (list
+        (for/list ([task tasks])
+            (match-define (list id title desc rb sb at db) task)
+            (list id title desc (filter values (list
+                (and rb `(ready ,rb))
+                (and sb `(assigned ,at ,sb))
+                (and db `(done ,db))))))
+        users)))
+
 (define (domain/load/v1 dm data)
-    (match-define (domain _ _ cur-user _ _) dm)
     (define tasks (first data))
     (define users (second data))
     (domain/load/v2 dm (list
@@ -132,7 +144,6 @@
         users)))
 
 (define (domain/load/v0 dm data)
-    (match-define (domain _ _ cur-user _ _) dm)
     (define tasks (first data))
     (define users (second data))
     (define usernames (map first users))
@@ -148,7 +159,7 @@
     (match-define (domain id->task id->user cur-user datafile _) dm)
     (call-with-atomic-output-file datafile (lambda (out tmppath)
       (parameterize ([current-output-port out])
-        (pretty-write 2)
+        (pretty-write 3)
         (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)))
         (pretty-write (map user->datum (sort (hash-values id->user) < #:key user-id)))))))
 

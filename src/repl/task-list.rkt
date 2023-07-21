@@ -65,8 +65,8 @@
             (define tasks
                 (if (me)
                     (query-tasks (sort-by < task-id)
-                                 (filter-by (curry equal? (user-id (me))) task-assigned-to)
                                  (filter-by task-assigned?)
+                                 (filter-by (curry equal? (user-id (me))) task-assigned-to)
                                  (filter-by not task-done?))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))

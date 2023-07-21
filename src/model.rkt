@@ -101,7 +101,7 @@
     (define interest (user-interest u (task-id t)))
     (define priority (user-priority u (task-id t)))
     (define assigned-value (and (task-assigned? t) 48))
-    (define mine-value (and (equal? (task-assigned-to t) (user-id u)) 48))
+    (define mine-value (and (equal? (task-assigned-to t #f) (user-id u)) 48))
     (define base-value (and base-priority interest priority
         (* interest (+ priority (* 2 base-priority)))))
     (+  (or assigned-value 0)
