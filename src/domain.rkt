@@ -121,12 +121,15 @@
 (define (domain/load/v2 dm data)
     (define tasks (first data))
     (define users (second data))
+    (define now (moment->datum (now/moment)))
     (domain/load/v3 dm (list
         (for/list ([task tasks])
             (match-define (list id title desc rb sb at db) task)
-            (list id title desc (filter values (list
+            (define creation (if rb rb now))
+            (list id creation title desc (filter values (list
                 (and rb `(ready ,rb))
-                (and sb `(assigned ,at ,sb))
+                (and sb `(started ,sb))
+                (and sb `(assigned ,at))
                 (and db `(done ,db))))))
         users)))
 
@@ -160,7 +163,7 @@
     (call-with-atomic-output-file datafile (lambda (out tmppath)
       (parameterize ([current-output-port out])
         (pretty-write 3)
-        (pretty-write (map task->datum (sort (hash-values id->task) < #:key task-id)))
+        (pretty-write (map task->datum (sort (hash-values id->task) moment<? #:key task-created)))
         (pretty-write (map user->datum (sort (hash-values id->user) < #:key user-id)))))))
 
 (: domain/register-task (Domain Task -> Void))

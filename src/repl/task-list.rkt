@@ -38,15 +38,14 @@
     (define n (in-naturals 0))
     (for ((arg (cdr argv)))
         (match arg
-            ["blocked" (add-filter not task-ready?)]
-            ["pending" (add-filter task-ready?) (add-filter not task-assigned?)]
             [(or "all" "-a") (set! filters empty)]
+            ["blocked" (add-filter not task-ready?)]
             ["ready" (add-filter task-ready?)]
-            ["assigned" (add-filter task-assigned?)]
-            ["unassigned" (add-filter not task-assigned?)]
+            ["pending" (add-filter not task-started?)]
+            ["started" (add-filter task-started?)]
             ["done" (add-filter task-done?)]
             ["not-done" (add-filter not task-done?)]
-            ["mine" (add-filter (curry equal? (user-id (me))) task-assigned-to)]
+            ["mine" (add-filter (curryr task-assigned-to-user? (user-id me)))]
             [(? number?) (set! n arg)]
             [(or "by-id" "-t") (set! sorter (list by-id))]
             [(or "by-priority" "-p") (set! sorter (list by-id by-priority))]))
@@ -60,14 +59,27 @@
 (define (repl-summary-handler argc argv) 
     (define rel-dmpath-to (let ([here (current-domain-frame)])
         (lambda (dmf) (dmpath-relative-from dmf here))))
+    (define tasks-in-progress (apply append
+        (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
+            (define tasks
+                (if (me)
+                    (query-tasks (sort-by < task-id)
+                                 (filter-by task-started?)
+                                 (filter-by not task-done?)
+                                 (filter-by (curryr task-assigned-to-user? (user-id (me)))))
+                    empty))
+            (define dmstr (dmpath->string (rel-dmpath-to dmf)))
+            (map (curry cons dmstr)
+                 (map task->summaryrow tasks))))))
     (define tasks-assigned (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
                 (if (me)
                     (query-tasks (sort-by < task-id)
-                                 (filter-by task-assigned?)
-                                 (filter-by (curry equal? (user-id (me))) task-assigned-to)
-                                 (filter-by not task-done?))
+                                 (sort-by > (curry get-user-task-assignment-index (me)))
+                                 (filter-by task-ready?)
+                                 (filter-by not task-started?)
+                                 (filter-by (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
             (map (curry cons dmstr)
@@ -86,16 +98,22 @@
                     (query-tasks (sort-by < task-id)
                                  (sort-by > (curry get-user-task-assignment-index (me)))
                                  (filter-by task-ready?)
-                                 (filter-by not task-assigned?))
+                                 (filter-by not task-started?)
+                                 (filter-by not task-done?)
+                                 (filter-by not (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
             (set! num-tasks-pending (+ num-tasks-pending (length tasks)))
             (map (curry cons dmstr)
                  (map task->summaryrow (list-truncate tasks 5)))))))
     (define tab (append
-        (if (empty? tasks-assigned)
+        (if (empty? tasks-in-progress)
             (list (list "" "" "" "" "\rNo tasks in progress."))
-            (list (list "" "" "" "" (format "\r~a tasks in progress." (length tasks-assigned)))))
+            (list (list "" "" "" "" (format "\r~a tasks in progress." (length tasks-in-progress)))))
+        tasks-in-progress
+        (if (empty? tasks-assigned)
+            (list (list "" "" "" "" "\rNo other tasks assigned."))
+            (list (list "" "" "" "" (format "\r~a other tasks assigned." (length tasks-assigned)))))
         tasks-assigned
         (if (empty? tasks-awaiting-eval)
             empty
@@ -105,9 +123,9 @@
             (list (list "" "" "" "" (format "\r~a tasks pending." num-tasks-pending))))
         tasks-pending))
     (print-table tab
-        '(1 1 20 4 0)
-        '(20 5 60 4 1000)
-        '(2 0 1 1 2)
+        '(1 1 20 6 0)
+        '(20 5 60 6 1000)
+        '(2 0 1 1 1)
         '(right right left left left)
         #:elide-repeated? '(#t #f #f #f #f)))
 
@@ -115,25 +133,31 @@
     (list
         (~a (task-id t))
         (~a (task-title t))
-        (cond
-            [(not (task-ready? t))    "b   "]
-            [(not (task-assigned? t)) " r  "]
-            [(not (task-done? t))     "  a "]
-            [#t                       "   d"])
-        (cond
-            [(and (task-ready? t) (not (task-assigned? t))) 
-             (define p (get-task-priority t))
-             (if p (~r (get-user-task-assignment-index (me) t) #:precision 0) "-")]
-            [(and (task-assigned? t) (not (task-done? t)))
-             (user-display-name (get-user-by-id (task-assigned-to t)))]
-            [#t ""])))
+        (format "~a~a~a ~a"
+            (if (task-ready? t)     "r" "-")
+            (if (task-started? t)   "s" "-")
+            (if (task-done? t)      "d" "-")
+            (cond
+                [(not (me)) ""]
+                [(user-needs-eval-task? (me) t) "--"]
+                [#t (~r (get-user-task-assignment-index (me) t)
+                            #:precision 0 #:min-width 2)]))
+        (block
+            (define assns (task-assigned-to t))
+            (define me? (and (me) (task-assigned-to-user? t (user-id (me)))))
+            (define +k (and (< 1 (length assns)) (sub1 (length assns))))
+            (if (empty? assns) ""
+                (format "~a~a"
+                    (if me? (user-display-name (me))
+                            (user-display-name (get-user-by-id (car assns))))
+                    (if +k (format " +~a" +k) ""))))))
 
 (define (list-tasks tasks)
     (define tab (map task->summaryrow tasks))
     (print-table tab
-        '(1 20 4 0)
-        '(20 60 4 1000)
-        '(2 1 1 2)
+        '(1 20 6 0)
+        '(20 60 6 1000)
+        '(2 1 1 1)
         '(right left left left)))
  
 (define repl-list-tasks (cmdentry repl-list-matchers repl-list-help repl-list-handler))

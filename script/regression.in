@@ -1,7 +1,7 @@
 l
 hans
 ed (0 10 18 22 27 35) d
-l
+l all
 cat 0
 n "qoweihtasg;lk"
 ed 0
@@ -9,7 +9,9 @@ cat
 eval 1 1 1
 q
 eval
-1 1 1
+s
+l
 :
 ?
+commit
 q!    
