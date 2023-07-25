@@ -7,6 +7,7 @@
 
 (provide assert!! expect!!
     error-failthrough
+    unwrap-const
     if* if**
     list-uniq
     list-truncate
@@ -30,6 +31,11 @@
     (Symbol String Any * -> (-> (^ Exn:Fail))))
 (define ((error-failthrough . args))
     (apply error args))
+
+(: unwrap-const ((-> v) -> v)
+                (v      -> v))
+(define (unwrap-const ->v)
+    (if (procedure? ->v) (->v) ->v))
 
 (define-syntax-rule
     (if* test texp fbody0 fbody ...)
