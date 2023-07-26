@@ -31,7 +31,7 @@
          (task-set-title! t name))]
         [(or "block" "b")
          (assert!! (= 1 argc))
-         (assert!! (not (task-done? t)))
+         (assert!! (not (task-resolved? t)))
          (task-block! t)]
         [(or "ready" "r")
          (assert!! (= 1 argc))
@@ -40,14 +40,17 @@
         [(or "assign" "ass" "a") (block
          (assert!! (<= 1 argc 2))
          (assert!! (task-ready? t))
-         (assert!! (not (task-done? t)))
+         (assert!! (not (task-resolved? t)))
          (define u (if (= 1 argc) (user-id (me)) (user-id (get-user-by-name (second argv)))))
          (task-assign! t u))]
         [(or "done" "d" "finish" "fin" "f")
          (assert!! (= 1 argc))
-         ;(assert!! (task-assigned? t))
-         (assert!! (not (task-done? t)))
+         (assert!! (not (task-resolved? t)))
          (task-done! t)]
+        [(or "close" "c" "reject")
+         (assert!! (= 1 argc))
+         (assert!! (not (task-resolved? t)))
+         (task-close! t)]
         [(or "eval" "e") (block
          (assert!! (<= 2 argc 4))
          (define cur-user (me))
@@ -63,6 +66,7 @@
             "r   ready"
             "a   assign [<user-id>] assign to user, or to self by default"
             "d   done"
+            "c   close"
             "e   eval <i> <p> <nr>  interest, priority, needs refinement?"
             "q   quit"
             "?   help               display this message"))
