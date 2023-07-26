@@ -159,17 +159,22 @@
                           (vector-ref widths i))))))
     (define lasts (make-list ncols ""))
     (for ([row tab])
-        (for ([width (in-vector widths)]
+        (for/fold
+             ([missing-space 0])
+             ([width (in-vector widths)]
               [cell row]
               [gutter gutters]
               [align aligns]
               [elide-repeated? elide-repeated?s]
               [last lasts])
-            (printf "~a~a"
-                (make-string gutter #\space)
+            (define cell-str
                 (~a (if (and elide-repeated? (equal? cell last)) "" cell)
-                    #:width width
-                    #:align align)))
+                    #:max-width width
+                    #:align align))
+            (printf "~a~a"
+                (make-string (+ missing-space gutter) #\space)
+                cell-str)
+            (- width (string-length cell-str)))
         (set! lasts row)
         (newline)))
 
