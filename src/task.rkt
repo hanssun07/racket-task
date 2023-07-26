@@ -12,10 +12,14 @@
     task-title  task-desc
     task-set-title!  task-set-desc!
     task-block!
-    task-ready! task-ready? task-ready-by
-    task-assign! task-unassign! task-assigned-to task-assigned-to-user?
-    task-start! task-started? task-started-by
-    task-done! task-done? task-done-by
+    task-ready!  task-ready?    task-ready-by
+    task-assign!
+        task-assigned-to task-assigned-to-user?
+        task-unassign! 
+    task-start!  task-started?  task-started-by
+    task-done!   task-done?     task-done-by
+    task-close!  task-closed?   task-closed-by
+                 task-resolved? task-resolved-by
     task->datum datum->task)
 
 (:typedef TaskId ExactNonnegativeInteger)
@@ -51,23 +55,20 @@
     (hash-ref (task-attrs t) attr on-fail))
 
 (: task-set-attr! (Task Symbol Any -> Void))
-(define (task-set-attr! t attr v)
-    (hash-set! (task-attrs t) attr v))
-
 (: task-update-attr! (Task Symbol (lv -> lv) (-> f) -> (U f Void))
                      (Task Symbol (lv -> lv) lv     -> Void)
                      (Task Symbol (lv -> lv)        -> (U Void (^ Exn:Fail)))
                      (: lv (Listof v)))
+(: task-remove-attr! (Task Symbol -> Void))
+(: task-block! (Task -> Void))
+(define (task-set-attr! t attr v)
+    (hash-set! (task-attrs t) attr v))
 (define (task-update-attr! t attr updater
         [on-fail (error-failthrough 'task-update-attr! "no attribute ~a to update on task ~a"
                                     attr (task-id t))])
     (hash-update! (task-attrs t) attr updater on-fail))
-
-(: task-remove-attr! (Task Symbol -> Void))
 (define (task-remove-attr! t attr)
     (hash-remove! (task-attrs t) attr))
-
-(: task-block! (Task -> Void))
 (define (task-block! t) (task-remove-attr! t 'ready))
 
 (: task-ready! (Task -> Void))
@@ -113,15 +114,37 @@
 
 (: task-done! (Task -> Void))
 (: task-done? (Task -> Bool))
-(: task-assigned-by (Task (-> f) -> (U Moment f))
-                    (Task f      -> (U Moment f))
-                    (Task        -> (U Moment (^ Exn:Fail))))
+(: task-done-by (Task (-> f) -> (U Moment f))
+                (Task f      -> (U Moment f))
+                (Task        -> (U Moment (^ Exn:Fail))))
 (define (task-done! t) (task-set-attr! t 'done (list (now/moment))))
 (define (task-done? t) (task-ref-attr t 'done))
 (define (task-done-by t
         [on-fail (error-failthrough 'task-done-by "task ~a is not done" (task-id t))])
     (define res (task-ref-attr t 'done))
     (if res (car res) (unwrap-const on-fail)))
+
+(: task-close! (Task -> Void))
+(: task-closed? (Task -> Bool))
+(: task-closed-by (Task (-> f) -> (U Moment f))
+                  (Task f      -> (U Moment f))
+                  (Task        -> (U Moment (^ Exn:Fail))))
+(define (task-close! t) (task-set-attr! t 'closed (list (now/moment))))
+(define (task-closed? t) (task-ref-attr t 'closed))
+(define (task-closed-by t
+        [on-fail (error-failthrough 'task-closed-by "task ~a is not closed" (task-id t))])
+    (define res (task-ref-attr t 'done))
+    (if res (car res) (unwrap-const on-fail)))
+
+(: task-resolved? (Task -> Bool))
+(: task-resolved-by (Task (-> f) -> (U Moment f))
+                    (Task f      -> (U Moment f))
+                    (Task        -> (U Moment (^ Exn:Fail))))
+(define (task-resolved? t) (or (task-done? t) (task-closed? t)))
+(define (task-resolved-by t
+        [on-fail (error-failthrough 'task-resolved-by "task ~a is not resolved" (task-id t))])
+    (define res (or (task-done-by t #f) (task-closed-by t #f)))
+    (if res res (unwrap-const on-fail)))
 
 
 (: task->datum (Task -> Any))

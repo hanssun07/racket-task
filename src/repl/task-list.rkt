@@ -30,7 +30,7 @@
 (define (repl-list-handler argc argv) (block
     (define filters (list
         (filter-by task-ready?)
-        (filter-by not task-done?)))
+        (filter-by not task-resolved?)))
     (define (add-filter . args) (set! filters (cons (apply filter-by args) filters)))
     (define by-priority (sort-by > (curry get-user-task-assignment-index (me))))
     (define by-id (sort-by < task-id))
@@ -45,6 +45,10 @@
             ["started" (add-filter task-started?)]
             ["done" (add-filter task-done?)]
             ["not-done" (add-filter not task-done?)]
+            ["closed" (add-filter task-closed?)]
+            ["not-closed" (add-filter not task-closed?)]
+            ["resolved" (add-filter task-resolved?)]
+            ["unresolved" (add-filter not task-resolved?)]
             ["mine" (add-filter (curryr task-assigned-to-user? (user-id me)))]
             [(? number?) (set! n arg)]
             [(or "by-id" "-t") (set! sorter (list by-id))]
@@ -136,7 +140,9 @@
         (format "~a~a~a ~a"
             (if (task-ready? t)     "r" "-")
             (if (task-started? t)   "s" "-")
-            (if (task-done? t)      "d" "-")
+            (cond [(task-done? t)   "d"]
+                  [(task-closed? t) "c"]
+                  [#t               "-"])
             (cond
                 [(not (me)) ""]
                 [(user-needs-eval-task? (me) t) "--"]
