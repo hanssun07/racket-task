@@ -3,6 +3,7 @@
 mv data.dat data.dat.bak
 mv task.config task.config.bak
 
+script/clean-compiled
 cp script/data.dat data.dat
 racket -l errortrace -t script/profile.rkt
 
