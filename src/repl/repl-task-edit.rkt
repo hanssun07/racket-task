@@ -43,6 +43,10 @@
          (assert!! (not (task-resolved? t)))
          (define u (if (= 1 argc) (user-id (me)) (user-id (get-user-by-name (second argv)))))
          (task-assign! t u))]
+        [(or "start" "s")
+         (assert!! (= 1 argc))
+         (assert!! (not (task-resolved? t)))
+         (task-start! t)]
         [(or "done" "d" "finish" "fin" "f")
          (assert!! (= 1 argc))
          (assert!! (not (task-resolved? t)))
@@ -65,6 +69,7 @@
             "b   block              set the task as blocked"
             "r   ready"
             "a   assign [<user-id>] assign to user, or to self by default"
+            "s   start"
             "d   done"
             "c   close"
             "e   eval <i> <p> <nr>  interest, priority, needs refinement?"
