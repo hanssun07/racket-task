@@ -146,8 +146,9 @@
             (cond
                 [(not (me)) ""]
                 [(user-needs-eval-task? (me) t) "--"]
-                [#t (~r (remainder (get-user-task-assignment-index (me) t) 100)
-                            #:precision 0 #:min-width 2)]))
+                [#t (~r (do ([v (get-user-task-assignment-index (me) t) (- v 100)])
+                            ((< v 100) v))
+                        #:precision 0 #:min-width 2)]))
         (block
             (define assns (task-assigned-to t))
             (define me? (and (me) (task-assigned-to-user? t (user-id (me)))))
