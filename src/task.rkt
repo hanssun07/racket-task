@@ -4,6 +4,7 @@
     "utils/ann.rkt"
     "utils/gregor.rkt"
     "utils.rkt"
+    threading
     racket/match
     racket/list racket/function)
 (provide
@@ -39,8 +40,8 @@
 
 (: make-task (TaskId String -> Task))
 (define (make-task id title)
-    (define now (now/moment))
-    (task id now title #f (make-hash `((ready ,now)))))
+    (define _now (now))
+    (task id _now title #f (make-hash `((ready ,_now)))))
 
 (: task-set-title! (Task String -> Void))
 (define task-set-title! set-task-title!)
@@ -76,12 +77,12 @@
 (: task-ready-by (Task (-> f) -> (U Moment f))
                  (Task f      -> (U Moment f))
                  (Task        -> (U Moment (^ Exn:Fail))))
-(define (task-ready! t) (task-set-attr! t 'ready (list (now/moment))))
+(define (task-ready! t) (task-set-attr! t 'ready (list (now))))
 (define (task-ready? t) (task-ref-attr t 'ready))
 (define (task-ready-by t
         [on-fail (error-failthrough 'task-ready-by "task ~a is not ready" (task-id t))])
     (define res (task-ref-attr t 'ready))
-    (if res (car res) (unwrap-const on-fail)))
+    (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
 (: task-assign! (Task UserId (-> f) -> (U Void f))
                 (Task UserId f      -> (U Void f))
@@ -105,36 +106,36 @@
 (: task-started-by (Task (-> f) -> (U Moment f))
                    (Task f      -> (U Moment f))
                    (Task        -> (U Moment (^Exn:Fail))))
-(define (task-start! t) (task-set-attr! t 'started (list (now/moment))))
+(define (task-start! t) (task-set-attr! t 'started (list (now))))
 (define (task-started? t) (task-ref-attr t 'started #f))
 (define (task-started-by t
         [on-fail (error-failthrough 'task-started-by "task ~a has not been started" (task-id t))])
     (define res (task-ref-attr t 'started #f))
-    (if res (car res) (unwrap-const on-fail)))
+    (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
 (: task-done! (Task -> Void))
 (: task-done? (Task -> Bool))
 (: task-done-by (Task (-> f) -> (U Moment f))
                 (Task f      -> (U Moment f))
                 (Task        -> (U Moment (^ Exn:Fail))))
-(define (task-done! t) (task-set-attr! t 'done (list (now/moment))))
+(define (task-done! t) (task-set-attr! t 'done (list (now))))
 (define (task-done? t) (task-ref-attr t 'done))
 (define (task-done-by t
         [on-fail (error-failthrough 'task-done-by "task ~a is not done" (task-id t))])
     (define res (task-ref-attr t 'done))
-    (if res (car res) (unwrap-const on-fail)))
+    (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
 (: task-close! (Task -> Void))
 (: task-closed? (Task -> Bool))
 (: task-closed-by (Task (-> f) -> (U Moment f))
                   (Task f      -> (U Moment f))
                   (Task        -> (U Moment (^ Exn:Fail))))
-(define (task-close! t) (task-set-attr! t 'closed (list (now/moment))))
+(define (task-close! t) (task-set-attr! t 'closed (list (now))))
 (define (task-closed? t) (task-ref-attr t 'closed))
 (define (task-closed-by t
         [on-fail (error-failthrough 'task-closed-by "task ~a is not closed" (task-id t))])
     (define res (task-ref-attr t 'done))
-    (if res (car res) (unwrap-const on-fail)))
+    (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
 (: task-resolved? (Task -> Bool))
 (: task-resolved-by (Task (-> f) -> (U Moment f))
@@ -146,7 +147,6 @@
     (define res (or (task-done-by t #f) (task-closed-by t #f)))
     (if res res (unwrap-const on-fail)))
 
-
 (: task->datum (Task -> Any))
 (define (task->datum t)
     (match-define (task id created title desc attrs) t)
@@ -154,11 +154,14 @@
         (datum-rec-transform
             (sort (hash->list attrs)
                   symbol<? #:key car)
-            (lambda (x) (if (moment? x) (moment->datum x) x)))))
+            (lambda (x) (if (moment/datum? x) (moment->datum x) x)))))
 
 (: datum->task (Any -> (U Task (^ Exn:Fail:Contract))))
 (define (datum->task d)
     (match-define (list id created title desc attrs) d)
     (task id (datum->moment created) title desc
-        (make-hash (datum-rec-transform attrs
-                    (lambda (x) (or (datum->moment x) x))))))
+        (make-hash (map (lambda (x) (case (car x)
+                            [(ready started done closed)
+                             `(,(car x) ,(datum->moment (cadr x)))]
+                            [else x]))
+                        attrs))))

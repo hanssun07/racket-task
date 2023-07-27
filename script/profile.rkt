@@ -11,9 +11,6 @@
     "../src/repl/task-list.rkt"
     "../src/repl/utils.rkt")
 
-(startup)
-(domain/login (current-domain) (get-user-by-name "hans"))
-
 (when #f
 (contract-profile
     #:report-space-efficient? #t
@@ -25,6 +22,13 @@
 )
 
 (when #t
+(profile
+    #:order 'self
+    #:use-errortrace? #t
+    (startup))
+)
+
+(when #f
 (profile
     #:order 'self
     #:use-errortrace? #t

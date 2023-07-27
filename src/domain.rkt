@@ -6,6 +6,7 @@
     "task.rkt"
     "user.rkt"
     "utils.rkt"
+    threading
     racket/match racket/block
     racket/list racket/function
     racket/port racket/pretty
@@ -121,7 +122,7 @@
 (define (domain/load/v2 dm data)
     (define tasks (first data))
     (define users (second data))
-    (define now (moment->datum (now/moment)))
+    (define now (~> (now/moment) wrap-moment moment->datum))
     (domain/load/v3 dm (list
         (for/list ([task tasks])
             (match-define (list id title desc rb sb at db) task)
@@ -140,10 +141,10 @@
         (for/list ([task tasks])
             (match-define (list id title desc rb sb at db) task)
             (list id title desc
-                  (and rb (moment->datum (posix->moment rb)))
-                  (and sb (moment->datum (posix->moment sb)))
+                  (and rb (~> rb posix->moment wrap-moment moment->datum))
+                  (and sb (~> sb posix->moment wrap-moment moment->datum))
                   at
-                  (and db (moment->datum (posix->moment db)))))
+                  (and db (~> db posix->moment wrap-moment moment->datum))))
         users)))
 
 (define (domain/load/v0 dm data)
@@ -163,7 +164,8 @@
     (call-with-atomic-output-file datafile (lambda (out tmppath)
       (parameterize ([current-output-port out])
         (pretty-write 3)
-        (pretty-write (map task->datum (sort (hash-values id->task) moment<? #:key task-created)))
+        (pretty-write (map task->datum (sort (hash-values id->task) moment/datum<? 
+                                             #:key task-created)))
         (pretty-write (map user->datum (sort (hash-values id->user) < #:key user-id)))))))
 
 (: domain/register-task (Domain Task -> Void))
