@@ -19,4 +19,5 @@ then
     git checkout "$1" || exit 1
     git pull
 fi
+yes | raco pkg install base $(cat raco-deps.txt)
 raco make main.rkt
