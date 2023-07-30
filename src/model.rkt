@@ -100,14 +100,18 @@
     (define base-priority (get-task-priority t))
     (define interest (user-interest u (task-id t)))
     (define priority (user-priority u (task-id t)))
-    (define assignment (task-assigned-to t))
-    (define assigned-value (and (not (empty? assignment)) 100))
+    (define status-value (cond
+        [(task-closed? t)     0]
+        [(task-done? t)     200]
+        [(task-started? t)  800]
+        [(task-ready? t)    600]
+        [#t                 400]))
     (define mine-value (and (task-assigned-to-user? t (user-id u)) 100))
-    (define base-value (and base-priority interest priority
+    (define eval-value (and base-priority interest priority
         (* interest (+ priority (* 2 base-priority)))))
-    (+ (or assigned-value 0)
+    (+ (or status-value 0)
        (or mine-value 0)
-       (or base-value 0)))
+       (or eval-value 0)))
 
 (: filter-by ((Any -> Any) * -> Filterer))
 (: sort-by ((Any Any -> Bool) (Any -> Any) * -> Sorter))
