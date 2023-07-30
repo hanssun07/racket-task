@@ -117,7 +117,10 @@
         (domain/register-task dm (datum->task (cons id (cdr task)))))
     (for ((user users) (id (in-naturals)))
         (domain/register-user dm (datum->user (cons id (cdr user)))))
-    (when cur-user (domain/login dm (user-id cur-user))))
+    (when cur-user
+        (~> (user-id cur-user)
+            (domain/get-user-by-id dm _)
+            (domain/login dm _))))
 
 (define (domain/load/v2 dm data)
     (define tasks (first data))
