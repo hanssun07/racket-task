@@ -2,10 +2,11 @@
 
 (require
     "../src/repl/utils.rkt"
+    "../src/utils.rkt"
     racket/port racket/list racket/file racket/function
     racket/path racket/pretty racket/syntax racket/format
-    racket/hash
-    racket/match
+    racket/hash racket/string
+    racket/match racket/block
     racket/cmdline
 )
 
@@ -27,7 +28,7 @@
          (list (record name (cmn)
                        (hash 'provided #t
                              'partypedef #t
-                             'params params
+                             'args params
                              'types (list type))))]
         [`(:typedef ,name ,type)
          (list (record name (cmn)
@@ -40,7 +41,7 @@
             (list (record _tname (cmn)
                           (hash 'provided #t
                                 'partypedef #t
-                                'params fnames
+                                'args fnames
                                 'types `((,_tname ,@fnames))))
                   (record tname (cmn)
                           (hash 'struct sname
@@ -101,51 +102,77 @@
     (take (append lst (make-list len val)) len))
 (define (anytable->strtable x)
     (map (lambda (x) (map ~a x)) x))
-(define (with-output-indented pre th) (block
+(define (with-output-indented/hanging pre th) (block
     (define str (open-output-string))
     (parameterize ([current-output-port str]) (th))
     (define lines (string-split (get-output-string str)
                                 "\n" #:trim? #f #:repeat? #t))
-    (for ([line lines]) (printf "~a~a\n" pre line))))
-(define (displayrec pre rec)
+    (for ([line lines] [i (in-naturals)])
+        (printf "~a~a\n" (if (zero? i) "" pre) line))))
+(define (displayentry pre rec)
     (match-define (record name in-module _) rec)
     (define args (record-attr-ref rec 'args))
     (define types (record-attr-ref rec 'types))
-    (printf "   ~a~a" in-module (if (record-attr-ref rec 'provided?) "" " (private)"))
-    (printf "~a ~a~a~a"
-         (round (- 99 (* 99 pre)))
-         ansi/bold name ansi/reset)
-    (with-output-indented "   " (thunk
-        (when (and args types)
-            (displayfn-args+types rec))))
-    (newline))
+    (define prefix (make-string (string-length (~a pre)) #\space))
+    (printf "~a ~a~a\n" prefix in-module (if (record-attr-ref rec 'provided) "" " (private)"))
+    (printf "~a " pre)
+    (with-output-indented/hanging (format "~a " prefix) (thunk (cond
+        [(and args types)
+         (displayfn-args+types rec)]
+        [types
+         (displayrec-types rec)]
+        [#t (printf "~a~a~a\n" ansi/bold name ansi/reset)]))))
+(define (displayrec-types rec)
+    (match-define (record name in-module _) rec)
+    (define types (record-attr-ref rec 'types))
+    (printf "~a~a~a\n" ansi/bold name ansi/reset)
+    (for ([type types])
+        (printf "  ~a\n" type)))
+    
 (define (displayfn-args+types rec)
     (match-define (record name in-module _) rec)
     (define args (record-attr-ref rec 'args))
     (define types (record-attr-ref rec 'types))
     (define defaults (record-attr-ref rec 'defaults))
-    (define defline (cons "" defaults))
+    (define defline defaults)
     (define defaults? (and defaults (memf (lambda (x) (not (equal? "" x))) defaults)))
-    (define argline (if (empty? args)
-                        (list (format "(~a)" name))
-                        (cons (format "(~a" name)
-                            (reverse (cons (format "~a)" (car (reverse args)))
-                                            (cdr (reverse args)))))))
+    (define nameline (if (empty? args)
+                         (format "(~a~a~a)" ansi/bold name ansi/reset)
+                         (format "(~a~a~a" ansi/bold name ansi/reset)))
+    (define argline (if (empty? args) (list)
+                        (reverse (cons (format "~a)" (car (reverse args)))
+                                        (cdr (reverse args))))))
     (define arglen (length argline))
     (define fntypes (filter (curry member '->) types))
     (define argtypess (map (lambda (xs) (takef xs (lambda (x) (not (eq? '-> x))))) fntypes))
     (define rettypes (map (lambda (xs) (dropf xs (lambda (x) (not (eq? '-> x))))) fntypes))
-    (define typelines-args (map (lambda (xs) (list-extend (cons "" xs) arglen)) argtypess))
+    (define typelines-args (map (lambda (xs) (list-extend xs arglen)) argtypess))
     (define typelines (map append typelines-args rettypes))
     (define rows-jagged (reverse ((if defaults? (curry cons defline) values)
-                                 (cons argline typelines))))
+                                  (reverse (cons argline typelines)))))
     (define rows-maxlen (length (argmax length rows-jagged)))
     (define rows (map (lambda (x) (list-extend x rows-maxlen)) rows-jagged))
-    (print-table (anytable->strtable rows)
-        (make-list rows-maxlen 1)
-        (make-list rows-maxlen 100)
-        (cons 2 (make-list (sub1 rows-maxlen) 1))
-        (make-list rows-maxlen 'left)))
+    (define rows-with-name
+        (cons (cons nameline (car rows))
+              (map (curry cons "") (cdr rows))))
+    (if** (< 80 (output-width (thunk
+            (print-table (anytable->strtable rows-with-name)
+                (make-list (add1 rows-maxlen) 1)
+                (make-list (add1 rows-maxlen) 100)
+                (cons 0 (make-list rows-maxlen 1))
+                (make-list (add1 rows-maxlen) 'left)))))
+        ((displayln nameline)
+         (print-table (anytable->strtable rows)
+            (make-list rows-maxlen 1)
+            (make-list rows-maxlen 100)
+            (cons 1 (make-list (sub1 rows-maxlen) 1))
+            (make-list rows-maxlen 'left)))
+        (print-table (anytable->strtable rows-with-name)
+            (make-list (add1 rows-maxlen) 1)
+            (make-list (add1 rows-maxlen) 100)
+            (cons 0 (make-list rows-maxlen 1))
+            (make-list (add1 rows-maxlen) 'left))))
+            
     
 (define default-files (map path->string (find-files (curryr path-has-extension? ".rkt") "src")))
 
@@ -198,6 +225,6 @@
 (define sorted (sort decorated < #:key cdr))
     
 (for ([rec (in-list sorted)] [_ (num-results)])
-    (printf "~a " (round (- 99 (* 99 (cdr rec)))))
-    (displayrec (car rec)))
+    ;(printf "~a " (round (- 99 (* 99 (cdr rec)))))
+    (displayentry (round (- 99 (* 99 (cdr rec)))) (car rec)))
             

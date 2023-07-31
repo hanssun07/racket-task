@@ -3,6 +3,7 @@
 (require
     "../utils/ann.rkt"
     "../utils/gregor.rkt"
+    threading
     racket/format   racket/string   racket/list
         racket/function     racket/exn
     racket/block    racket/match
@@ -19,6 +20,7 @@
     load    commit  commit-all  save-and-exit
     eof-barrier me  login
     read-token  read-line-tokens
+    output-width
     format-date
     print-table)
 
@@ -142,9 +144,44 @@
         (domain/login (current-domain) (get-user-by-name (car argv)))
         (printf "Logged in as ~a.\n" (car argv))
         #t))))
+
+(: string-empty? (String -> Bool))
+(: string-display-control-prefix (String -> String))
+(define (string-empty? str) (zero? (string-length str)))
+(define (string-display-control-prefix str)
+    (if (string-prefix? str "\033[")
+        (let ([is (regexp-match-positions "m" str)])
+            (if is (substring str 0 (add1 (caar is))) ""))
+        ""))
+
+(: string-length/displayed (String -> Index))
+(: string-truncate/displayed (String Index -> String))
+(define (string-length/displayed str)
+    (string-length (regexp-replace* #rx"\033\\[[0-9;]+m" str "")))
+(define (string-truncate/displayed str len)
+    (define parts (reverse (let loop ([rest str] [left len] [acc '()])
+        (if* (string-empty? rest) acc
+        (define pre (string-display-control-prefix rest))
+        (if (string-empty? pre)
+            (if (zero? left)
+                (loop (substring rest 1) 0 acc)
+                (loop (substring rest 1) (sub1 left) (cons (string-ref rest 0) acc)))
+            (loop (substring rest (string-length pre))
+                  left (cons pre acc)))))))
+    (foldr (lambda (x str) (string-append (if (string? x) x (make-string 1 x)) str)) 
+           "" parts))
+
+(: output-width ((-> Any) -> Index))
+(define (output-width th)
+    (define str (open-output-string))
+    (parameterize ([current-output-port str]) (th))
+    (~> (get-output-string str)
+        (string-split _ "\n" #:trim? #f #:repeat? #t)
+        (argmax string-length/displayed _)
+        string-length/displayed))
  
 (: format-date (Moment -> String))
-(: print-table (TableEntries (Listof ExactNonnegativeIntegers) x4 -> Void))
+(: print-table (TableEntries (Listof ExactNonnegativeInteger) x4 -> Void))
 (define (format-date dt)
     (~t dt "y-MM-dd"))
 (define (print-table tab min-widths max-widths gutters aligns
@@ -152,29 +189,51 @@
             #:elide-repeated? [elide-repeated?s (make-list ncols #f)])
     (define widths (list->vector min-widths))
     (for ([row tab])
-        (for ([i (vector-length widths)] [cell row])
-            (vector-set! widths i
-                (min (list-ref max-widths i)
-                     (max (string-length cell)
-                          (vector-ref widths i))))))
+        (define spill?s (for/foldr ([res '()] [cur #t] #:result res)
+                                   ([cell row])
+                                   (values (cons cur res) (and cur (string-empty? cell)))))
+        (for ([i (vector-length widths)] [cell row] [spill? spill?s])
+            (unless spill?
+                (vector-set! widths i
+                    (min (list-ref max-widths i)
+                         (max (string-length/displayed cell)
+                              (vector-ref widths i)))))))
     (define lasts (make-list ncols ""))
     (for ([row tab])
+        (define spaces+spillover
+            (for/foldr ([res (list (car (reverse max-widths)))]
+                        [spill? #t]
+                        #:result res)
+                       ([width (in-vector widths)]
+                        [ngutter (cdr gutters)]
+                        [ncell   (cdr row)]
+                        [cell    row])
+                (values 
+                    (if spill?  
+                        (cons (+ width (if (string-empty? ncell) (+ (car res) ngutter) 0))
+                              res)
+                        (cons width res))
+                    (and spill? (string-empty? cell)))))
         (for/fold
              ([missing-space 0])
-             ([width (in-vector widths)]
+             ([cwidth (in-vector widths)]
+              [width spaces+spillover]
               [cell row]
               [gutter gutters]
               [align aligns]
               [elide-repeated? elide-repeated?s]
               [last lasts])
-            (define cell-str
-                (~a (if (and elide-repeated? (equal? cell last)) "" cell)
-                    #:max-width width
-                    #:align align))
+            (define cell-str (if (eq? align 'left)
+                (~a (if (and elide-repeated? (equal? cell last))
+                        "" (string-truncate/displayed cell width)))
+                (~a (if (and elide-repeated? (equal? cell last))
+                        "" (string-truncate/displayed cell width))
+                    #:width (+ width (- (string-length cell) (string-length/displayed cell)))
+                    #:align align)))
             (printf "~a~a"
-                (make-string (+ missing-space gutter) #\space)
+                (make-string (max 0 (+ missing-space gutter)) #\space)
                 cell-str)
-            (- width (string-length cell-str)))
+            (- cwidth (string-length/displayed cell-str)))
         (set! lasts row)
         (newline)))
 
