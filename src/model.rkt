@@ -149,5 +149,6 @@
     (define id (task-id t))
     (and
         (task-ready? t)
-        (not (task-assigned-to-user? t (user-id u)))
+        (not (task-resolved? t))
         (not (and (user-interest u id) (user-priority u id) (user-task-needs-refinement? u id)))))
+

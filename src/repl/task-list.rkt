@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require
+    "../utils/ann.rkt"
     racket/block    racket/match
     racket/function racket/list
     racket/format
@@ -57,10 +58,10 @@
     (list-tasks tasks)
     (printf "~a/~a tasks shown.\n" (length tasks) (task-count))))
 
-(define repl-summary-matchers '(#f "sum" "summary"))
-(define repl-summary-help '(
-    (":" "summary" "get a summary of assigned, pending tasks")))
-(define (repl-summary-handler argc argv) 
+(: get-task-summary (-> (AssocList Symbol DmStr+Task))
+                    (: (AssocList a b) (Listof (Pair a b)))
+                    (: DmStr+Task (Pair String Task)))
+(define (get-task-summary)
     (define rel-dmpath-to (let ([here (current-domain-frame)])
         (lambda (dmf) (dmpath-relative-from dmf here))))
     (define tasks-in-progress (apply append
@@ -73,8 +74,7 @@
                                  (filter-by (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
-            (map (curry cons dmstr)
-                 (map task->summaryrow tasks))))))
+            (map (curry cons dmstr) tasks)))))
     (define tasks-assigned (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
@@ -86,15 +86,15 @@
                                  (filter-by (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
-            (map (curry cons dmstr)
-                 (map task->summaryrow tasks))))))
+            (map (curry cons dmstr) tasks)))))
     (define tasks-awaiting-eval (apply append
-        (for/list ([dmf (in-domain)])
-            (parameterize ([current-domain-frame dmf])
+        (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
+            (define tasks
                 (if (me)
                     (query-tasks (filter-by (curry user-needs-eval-task? (me))))
-                    empty)))))
-    (define num-tasks-pending 0)
+                    empty))
+            (define dmstr (dmpath->string (rel-dmpath-to dmf)))
+            (map (curry cons dmstr) tasks)))))
     (define tasks-pending (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
@@ -107,25 +107,37 @@
                                  (filter-by not (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
-            (set! num-tasks-pending (+ num-tasks-pending (length tasks)))
-            (map (curry cons dmstr)
-                 (map task->summaryrow (list-truncate tasks 5)))))))
-    (define tab (append
-        (if (empty? tasks-in-progress)
-            (list (list "" "" "" "" "\rNo tasks in progress."))
-            (list (list "" "" "" "" (format "\r~a tasks in progress." (length tasks-in-progress)))))
-        tasks-in-progress
-        (if (empty? tasks-assigned)
-            (list (list "" "" "" "" "\rNo other tasks assigned."))
-            (list (list "" "" "" "" (format "\r~a other tasks assigned." (length tasks-assigned)))))
-        tasks-assigned
-        (if (empty? tasks-awaiting-eval)
-            empty
-            (list (list "" "" "" "" (format "\r~a tasks awaiting evaluation." (length tasks-awaiting-eval)))))
-        (if (zero? num-tasks-pending)
-            (list (list "" "" "" "" "\rNo tasks pending."))
-            (list (list "" "" "" "" (format "\r~a tasks pending." num-tasks-pending))))
-        tasks-pending))
+            (map (curry cons dmstr) tasks)))))
+    `(("in progress"         . ,tasks-in-progress)
+      ("assigned"            . ,tasks-assigned)
+      ("awaiting evaluation" . ,tasks-awaiting-eval)
+      ("pending"             . ,tasks-pending)))
+
+    
+
+(define repl-summary-matchers '(#f "sum" "summary"))
+(define repl-summary-help '(
+    (":" "summary" "get a summary of assigned, pending tasks")))
+(define (repl-summary-handler argc argv) 
+    (define data (get-task-summary))
+    (define tab (let loop ([i 7] [tasks empty] [parts data])
+        (define (next-part)
+            (if* (empty? parts) empty
+            (match-define (cons part tasks) (car parts))
+            (define n (length tasks))
+            (cons (list "" "" "" ""
+                        (format "\r~a task~a ~a."
+                                (if (zero? n) "No" n)
+                                (if (= 1 n) "" "s")
+                                part))
+                  (loop (max i 1) tasks (cdr parts)))))
+        (define (next-task)
+            (if* (empty? tasks) (next-part)
+            (if* (zero? i) (cons (list "" "" "..." "" "") (next-part))
+            (match-define (cons domstr task) (car tasks))
+            (cons (cons domstr (task->summaryrow task))
+                  (loop (sub1 i) (cdr tasks) parts)))))
+        (next-task)))
     (print-table tab
         '(1 1 20 6 0)
         '(20 5 60 6 1000)
