@@ -1,5 +1,10 @@
 #!/bin/bash
 
+fail() {
+    >&2 echo $@
+    exit 1
+}
+
 dir=$(dirname -- ${BASH_SOURCE[0]})
 if [ -n "$dir" ]
 then
@@ -8,16 +13,19 @@ fi
 
 if [ ! -d program/.git ]
 then
-    git clone  -- git@github.com:hanssun07/racket-task.git program || exit 1
+    git clone -- git@github.com:hanssun07/racket-task.git program ||
+        fail "Failed to fetch program code"
 fi
 
 cd program
-
-git pull
 if [ "$#" -ge 1 ]
 then
-    git checkout "$1" || exit 1
-    git pull
+    branch=$1
+    git checkout "$branch" || fail "Failed to switch to branch $branch"
 fi
+remote=$(git for-each-ref --format='%(upstream:short)' "$(git symbolic-ref -q HEAD)")
+git fetch || fail "Failed to fetch remote branch $remote"
+git reset --hard "$remote" || "Failed to complete code update."
+
 yes | raco pkg install base $(cat raco-deps.txt)
 raco make main.rkt
