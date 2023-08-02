@@ -21,7 +21,7 @@ run() {
         git add data.dat
         git diff --staged --quiet && echo "No changes to commit." || git commit -m "[update]"
         
-        git pull --rebase || exit 1
+        git pull --rebase || { git rebase --abort ; exit 1; }
         git push || exit 1
         
         popd >/dev/null
