@@ -50,8 +50,8 @@
 
 (: _id->idx (Graph Id -> Index))
 (: _idx->id (Graph Index -> Id))
-(define (_id->idx g a) (~> g id->idx (hash-ref _ a)))
-(define (_idx->id g i) (~> g idx->id (gvector-ref _ I)))
+(define (_id->idx g a) (~> g graph-id->idx (hash-ref _ a)))
+(define (_idx->id g i) (~> g graph-idx->id (gvector-ref _ I)))
 
 (: _children-of    (Graph Index -> (IntegerSet Index)))
 (: _parents-of     (Graph Index -> (IntegerSet Index)))
@@ -99,12 +99,12 @@
 (: graph-is-ancestor-of?    (Graph Id Id -> Bool))
 (: graph-is-unrelated-to?   (Graph Id Id -> Bool))
 (: graph-is-unknown-to?     (Graph Id Id -> Bool))
-(define (graph-is-child-of?      g a b) (_is-child-of?      g (_id->idx g a) (_id->idx g b))
-(define (graph-is-parent-of?     g a b) (_is-parent-of?     g (_id->idx g a) (_id->idx g b))
-(define (graph-is-descendent-of? g a b) (_is-descendent-of? g (_id->idx g a) (_id->idx g b))
-(define (graph-is-ancestor-of?   g a b) (_is-ancestor-of?   g (_id->idx g a) (_id->idx g b))
-(define (graph-is-unrelated-to?  g a b) (_is-unrelated-to?  g (_id->idx g a) (_id->idx g b))
-(define (graph-is-unknown-to?    g a b) (_is-unknown-to?    g (_id->idx g a) (_id->idx g b))
+(define (graph-is-child-of?      g a b) (_is-child-of?      g (_id->idx g a) (_id->idx g b)))
+(define (graph-is-parent-of?     g a b) (_is-parent-of?     g (_id->idx g a) (_id->idx g b)))
+(define (graph-is-descendent-of? g a b) (_is-descendent-of? g (_id->idx g a) (_id->idx g b)))
+(define (graph-is-ancestor-of?   g a b) (_is-ancestor-of?   g (_id->idx g a) (_id->idx g b)))
+(define (graph-is-unrelated-to?  g a b) (_is-unrelated-to?  g (_id->idx g a) (_id->idx g b)))
+(define (graph-is-unknown-to?    g a b) (_is-unknown-to?    g (_id->idx g a) (_id->idx g b)))
 
 (: graph-relation-of (Graph Id Id -> (U 'self 'child 'parent
                                         'descendent 'ancestor
@@ -133,7 +133,7 @@
 (define ((_in-rel-of getter) g ai) (getter g ai))
 (define _in-children-of    (_in-rel-of _children-of))
 (define _in-parents-of     (_in-rel-of _parents-of))
-(define _in-descendents-of (_in-rel-of _descendents-of)
+(define _in-descendents-of (_in-rel-of _descendents-of))
 (define _in-ancestors-of   (_in-rel-of _ancestors-of))
 (define _in-unrelated-to   (_in-rel-of _unrelated-to))
 (define _in-unknown-to     (_in-rel-of _unknown-to))
@@ -200,11 +200,12 @@
     (unless (equal? p-desc (_descendents-of g pi))
         (for ([i (in-graph-node-ancestors g pi)])
             (gvector-set! descendent-cache i
-             (union (gvector-ref descendent-cache i) p-desc)))
+             (union (gvector-ref descendent-cache i) p-desc))))
     (unless (equal? c-ansc (_ancestors-of g ci))
     (for ([i (in-graph-node-descendents g ci)])
         (gvector-set! ancestor-cache i
          (union (gvector-ref ancestor-cache i) c-ansc))))
+)
                 
             
 
