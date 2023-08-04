@@ -64,6 +64,7 @@
 (define (get-task-summary)
     (define rel-dmpath-to (let ([here (current-domain-frame)])
         (lambda (dmf) (dmpath-relative-from dmf here))))
+    (define (annotate-tasks dmstr ts) (map (lambda (t) `(,t ,dmstr . ,(task->summaryrow t))) ts))
     (define tasks-in-progress (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
@@ -74,7 +75,7 @@
                                  (filter-by (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
-            (map (curry cons dmstr) tasks)))))
+            (annotate-tasks dmstr tasks)))))
     (define tasks-assigned (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
@@ -86,7 +87,7 @@
                                  (filter-by (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
-            (map (curry cons dmstr) tasks)))))
+            (annotate-tasks dmstr tasks)))))
     (define tasks-awaiting-eval (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
@@ -94,7 +95,7 @@
                     (query-tasks (filter-by (curry user-needs-eval-task? (me))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
-            (map (curry cons dmstr) tasks)))))
+            (annotate-tasks dmstr tasks)))))
     (define tasks-pending (apply append
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
@@ -107,7 +108,7 @@
                                  (filter-by not (curryr task-assigned-to-user? (user-id (me)))))
                     empty))
             (define dmstr (dmpath->string (rel-dmpath-to dmf)))
-            (map (curry cons dmstr) tasks)))))
+            (annotate-tasks dmstr tasks)))))
     `(("in progress"         . ,tasks-in-progress)
       ("assigned"            . ,tasks-assigned)
       ("awaiting evaluation" . ,tasks-awaiting-eval)
@@ -134,9 +135,8 @@
         (define (next-task)
             (if* (empty? tasks) (next-part)
             (if* (zero? i) (cons (list "" "" "..." "" "") (next-part))
-            (match-define (cons domstr task) (car tasks))
-            (cons (cons domstr (task->summaryrow task))
-                  (loop (sub1 i) (cdr tasks) parts)))))
+            (match-define (cons _ row) (car tasks))
+            (cons row (loop (sub1 i) (cdr tasks) parts)))))
         (next-task)))
     (print-table tab
         '(1 1 20 6 0)
