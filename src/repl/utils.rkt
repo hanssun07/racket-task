@@ -6,6 +6,7 @@
     threading
     racket/format   racket/string   racket/list
         racket/function     racket/exn
+        racket/sequence
     racket/block    racket/match
     racket/file     racket/system   racket/port
     "../domain.rkt"
@@ -189,9 +190,10 @@
             #:elide-repeated? [elide-repeated?s (make-list ncols #f)])
     (define widths (list->vector min-widths))
     (for ([row tab])
-        (define spill?s (for/foldr ([res '()] [cur #t] #:result res)
-                                   ([cell row])
-                                   (values (cons cur res) (and cur (string-empty? cell)))))
+        (define spill?s (for/foldr ([res '(#f)] [cur #t] #:result res)
+                                   ([cell (cdr row)])
+                                   (define spill? (and cur (string-empty? cell)))
+                                   (values (cons spill? res) spill?)))
         (for ([i (vector-length widths)] [cell row] [spill? spill?s])
             (unless spill?
                 (vector-set! widths i
@@ -201,7 +203,7 @@
     (define lasts (make-list ncols ""))
     (for ([row tab])
         (define spaces+spillover
-            (for/foldr ([res (list (car (reverse max-widths)))]
+            (for/foldr ([res (list (car (reverse (vector->list widths))))]
                         [spill? #t]
                         #:result res)
                        ([width (in-vector widths)]
@@ -215,11 +217,11 @@
                         (cons width res))
                     (and spill? (string-empty? cell)))))
         (for/fold
-             ([missing-space 0])
+             ([missing-space (car gutters)])
              ([cwidth (in-vector widths)]
               [width spaces+spillover]
               [cell row]
-              [gutter gutters]
+              [ngutter (sequence-append (cdr gutters) (in-value 0))]
               [align aligns]
               [elide-repeated? elide-repeated?s]
               [last lasts])
@@ -231,9 +233,9 @@
                     #:width (+ width (- (string-length cell) (string-length/displayed cell)))
                     #:align align)))
             (printf "~a~a"
-                (make-string (max 0 (+ missing-space gutter)) #\space)
+                (make-string (max 0 missing-space) #\space)
                 cell-str)
-            (- cwidth (string-length/displayed cell-str)))
+            (+ missing-space ngutter (- cwidth (string-length/displayed cell-str))))
         (set! lasts row)
         (newline)))
 
