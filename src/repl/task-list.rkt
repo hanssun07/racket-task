@@ -14,6 +14,7 @@
 (provide
     repl-list-tasks
     repl-summary
+    get-task-summary
     list-tasks)
 
 (define repl-list-matchers '("l" "ls" "list"))
@@ -58,9 +59,9 @@
     (list-tasks tasks)
     (printf "~a/~a tasks shown.\n" (length tasks) (task-count))))
 
-(: get-task-summary (-> (AssocList Symbol DmStr+Task))
+(: get-task-summary (-> (AssocList String TaskRecord))
                     (: (AssocList a b) (Listof (Pair a b)))
-                    (: DmStr+Task (Pair String Task)))
+                    (: TaskRecord (List* Task DomainString TaskSummaryRow)))
 (define (get-task-summary)
     (define rel-dmpath-to (let ([here (current-domain-frame)])
         (lambda (dmf) (dmpath-relative-from dmf here))))
