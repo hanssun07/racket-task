@@ -15,10 +15,10 @@
     repl-eval)
 
 (define (eval-task-loop t)
-    (define id (task-id t))
+    (define ui-id (task-ui-id t))
     (define res
         (retry-until-success 
-            (prompt (format "eval ~a@~a~a" (user-display-name (me)) (dmpath->string) id))
+            (prompt (format "eval ~a@~a~a" (user-display-name (me)) (dmpath->string) ui-id))
             (eof-barrier)
             (define argv (read-line-tokens))
             (match (car argv)
@@ -32,15 +32,14 @@
                     "?   help               display this message"))
                  (for-each displayln helpmsg)
                  'loop]
-                [_ (handle-edit-task id (cons "e" argv)) #t])))
+                [_ (handle-edit-task t (cons "e" argv)) #t])))
     (if (eq? 'loop res) (eval-task-loop t) res))
 (define (repl-eval remaining)
     (unless (empty? remaining) (block
         (define t (car remaining))
-        (define id (task-id t))
         (me)
         (printf "~a left." (length remaining))
-        (show-task id)
+        (show-task t)
         (when (eval-task-loop t) (repl-eval (cdr remaining))))))
         
 

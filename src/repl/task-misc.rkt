@@ -13,14 +13,13 @@
 
 
 (define (new-task name)
-    (define id (next-task-id))
-    (register-task (make-task id name))
-    (printf "Registered task ~a: ~a.\n" id name))
+    (define uiid (next-task-ui-id))
+    (register-task (make-task uiid name))
+    (printf "Registered task ~a: ~a.\n" uiid name))
 
-(define (show-task id)
-    (define t (get-task id))
-    (newline)
-    (printf "Task ~a: ~a\n" (task-id t) (task-title t))
+(define (show-task t)
+    (define uid (task-ui-id t))
+    (printf "Task ~a: ~a\n" (task-ui-id t) (task-title t))
     (if (task-desc t)
         (printf "~a\n\n" (task-desc t))
         (printf "[no description]\n\n"))

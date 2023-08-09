@@ -14,13 +14,12 @@
     handle-edit-task
     repl-edit)
 
-(define (handle-edit-task id argv)
-    (define t (get-task id))
+(define (handle-edit-task t argv)
     (define continue? #t)
     (define argc (length argv))
     (match (car argv)
         [(or "cat" "show")
-         (show-task id)]
+         (show-task t)]
         [(or "desc" "set-desc" "sd") (block
          (assert!! (= 1 argc))
          (define desc (prompt-editor (or (task-desc t) "")))
@@ -58,6 +57,7 @@
         [(or "eval" "e") (block
          (assert!! (<= 2 argc 4))
          (define cur-user (me))
+         (define id (task-id t))
          (user-set-interest! cur-user id (second argv))
          (when (<= 3 argc) (user-set-priority! cur-user id (third argv)))
          (when (<= 4 argc) (user-set-needs-refinement! cur-user id (fourth argv))))]
@@ -80,14 +80,14 @@
          (set! continue? #f)])
     continue?)
 
-(define (repl-edit id)
-    (define t (get-task id))
+(define (repl-edit t)
+    (define ui-id (task-ui-id t))
     (define continue? #t)
     (retry-until-success (block
-        (prompt (format "ed ~a@~a~a" (user-display-name (me)) (dmpath->string) id))
+        (prompt (format "ed ~a@~a~a" (user-display-name (me)) (dmpath->string) ui-id))
         (eof-barrier)
         (define argv (read-line-tokens))
-        (set! continue? (and (handle-edit-task id argv) continue?))))
-    (when continue? (repl-edit id)))
+        (set! continue? (and (handle-edit-task t argv) continue?))))
+    (when continue? (repl-edit t)))
 
 

@@ -26,7 +26,7 @@
                   (thunk*
                      (assert!! (= 1 argc))
                      (define tasks-to-eval
-                        (query-tasks (sort-by < task-id)
+                        (query-tasks (sort-by < task-ui-id)
                                      (filter-by (curry user-needs-eval-task? (me)))))
                      (repl-eval tasks-to-eval)))
         (cmdentry '("n" "new" "new-task")
@@ -41,16 +41,16 @@
                   (thunk*
                      (assert!! (<= 2 argc))
                      (if (= argc 2) 
-                         (repl-edit (second argv))
+                         (repl-edit (get-task/ui (second argv)))
                          (if (list? (second argv))
                              (for ([i (second argv)])
-                                 (handle-edit-task i (cddr argv)))
-                             (handle-edit-task (second argv) (cddr argv))))))
+                                 (handle-edit-task (get-task/ui i) (cddr argv)))
+                             (handle-edit-task (get-task/ui (second argv)) (cddr argv))))))
         (cmdentry '("cat" "show" "show-task" "view" "view-task")
                   '(("cat" "view-task <id>" "view details of a task"))
                   (thunk*
                      (assert!! (= 2 argc))
-                     (show-task (second argv))))
+                     (show-task (get-task/ui (second argv)))))
         repl-list-tasks
         cmdentry-spacer
         (cmdentry '("reload")

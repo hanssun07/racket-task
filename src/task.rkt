@@ -4,12 +4,13 @@
     "utils/ann.rkt"
     "utils/gregor.rkt"
     "utils.rkt"
+    uuid
     threading
     racket/match
     racket/list racket/function)
 (provide
     make-task   task?
-    task-id task-created
+    task-id task-ui-id task-created
     task-title  task-desc
     task-set-title!  task-set-desc!
     task-block!
@@ -23,25 +24,27 @@
                  task-resolved? task-resolved-by
     task->datum datum->task)
 
-(:typedef TaskId ExactNonnegativeInteger)
+(:typedef UiId ExactNonnegativeInteger)
+(:typedef TaskId UuidSymbol)
 (:structdef task : Task
-    ([id : TaskId]
+    ([id      : TaskId]
+     [ui-id   : UiId]
      [created : Moment]
-     [title : String]
-     [desc : (? String)]
-     [attrs : (MHash Symbol (Listof Any))]))
+     [title   : String]
+     [desc    : (? String)]
+     [attrs   : (MHash Symbol (Listof Any))]))
 (struct task
-    (id
+    (id ui-id
      created
      title
      desc
      attrs)
     #:mutable)
 
-(: make-task (TaskId String -> Task))
+(: make-task (UiId String -> Task))
 (define (make-task id title)
     (define _now (now))
-    (task id _now title #f (make-hash `((ready ,_now)))))
+    (task (uuid-symbol) id _now title #f (make-hash `((ready ,_now)))))
 
 (: task-set-title! (Task String -> Void))
 (define task-set-title! set-task-title!)
@@ -66,7 +69,7 @@
     (hash-set! (task-attrs t) attr v))
 (define (task-update-attr! t attr updater
         [on-fail (error-failthrough 'task-update-attr! "no attribute ~a to update on task ~a"
-                                    attr (task-id t))])
+                                    attr (task-ui-id t))])
     (hash-update! (task-attrs t) attr updater on-fail))
 (define (task-remove-attr! t attr)
     (hash-remove! (task-attrs t) attr))
@@ -80,7 +83,7 @@
 (define (task-ready! t) (task-set-attr! t 'ready (list (now))))
 (define (task-ready? t) (task-ref-attr t 'ready))
 (define (task-ready-by t
-        [on-fail (error-failthrough 'task-ready-by "task ~a is not ready" (task-id t))])
+        [on-fail (error-failthrough 'task-ready-by "task ~a is not ready" (task-ui-id t))])
     (define res (task-ref-attr t 'ready))
     (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
@@ -92,7 +95,7 @@
 (: task-assigned-to-user? (Task UserId -> Bool))
 (define (task-assign! t uid
         [on-fail (error-failthrough 'task-assign! "task ~a is already assigned to user ~a"
-                                    (task-id t) uid)])
+                                    (task-ui-id t) uid)])
     (if (member uid (task-ref-attr t 'assigned empty))
         (unwrap-const on-fail)
         (task-update-attr! t 'assigned (curry cons uid) empty)))
@@ -109,7 +112,7 @@
 (define (task-start! t) (task-set-attr! t 'started (list (now))))
 (define (task-started? t) (task-ref-attr t 'started #f))
 (define (task-started-by t
-        [on-fail (error-failthrough 'task-started-by "task ~a has not been started" (task-id t))])
+        [on-fail (error-failthrough 'task-started-by "task ~a has not been started" (task-ui-id t))])
     (define res (task-ref-attr t 'started #f))
     (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
@@ -121,7 +124,7 @@
 (define (task-done! t) (task-set-attr! t 'done (list (now))))
 (define (task-done? t) (task-ref-attr t 'done))
 (define (task-done-by t
-        [on-fail (error-failthrough 'task-done-by "task ~a is not done" (task-id t))])
+        [on-fail (error-failthrough 'task-done-by "task ~a is not done" (task-ui-id t))])
     (define res (task-ref-attr t 'done))
     (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
@@ -133,7 +136,7 @@
 (define (task-close! t) (task-set-attr! t 'closed (list (now))))
 (define (task-closed? t) (task-ref-attr t 'closed))
 (define (task-closed-by t
-        [on-fail (error-failthrough 'task-closed-by "task ~a is not closed" (task-id t))])
+        [on-fail (error-failthrough 'task-closed-by "task ~a is not closed" (task-ui-id t))])
     (define res (task-ref-attr t 'done))
     (if res (~> res car unwrap-moment) (unwrap-const on-fail)))
 
@@ -143,14 +146,14 @@
                     (Task        -> (U Moment (^ Exn:Fail))))
 (define (task-resolved? t) (or (task-done? t) (task-closed? t)))
 (define (task-resolved-by t
-        [on-fail (error-failthrough 'task-resolved-by "task ~a is not resolved" (task-id t))])
+        [on-fail (error-failthrough 'task-resolved-by "task ~a is not resolved" (task-ui-id t))])
     (define res (or (task-done-by t #f) (task-closed-by t #f)))
     (if res res (unwrap-const on-fail)))
 
 (: task->datum (Task -> Any))
 (define (task->datum t)
-    (match-define (task id created title desc attrs) t)
-    (list id (moment->datum created) title desc 
+    (match-define (task id uiid created title desc attrs) t)
+    (list id uiid (moment->datum created) title desc 
         (datum-rec-transform
             (sort (hash->list attrs)
                   symbol<? #:key car)
@@ -158,8 +161,8 @@
 
 (: datum->task (Any -> (U Task (^ Exn:Fail:Contract))))
 (define (datum->task d)
-    (match-define (list id created title desc attrs) d)
-    (task id (datum->moment created) title desc
+    (match-define (list id uiid created title desc attrs) d)
+    (task id uiid (datum->moment created) title desc
         (make-hash (map (lambda (x) (case (car x)
                             [(ready started done closed)
                              `(,(car x) ,(datum->moment (cadr x)))]

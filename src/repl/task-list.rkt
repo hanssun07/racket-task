@@ -35,7 +35,7 @@
         (filter-by not task-resolved?)))
     (define (add-filter . args) (set! filters (cons (apply filter-by args) filters)))
     (define by-priority (sort-by > (curry get-user-task-assignment-index (me))))
-    (define by-id (sort-by < task-id))
+    (define by-id (sort-by < task-ui-id))
     (define sorter (list by-id by-priority))
     (define n (in-naturals 0))
     (for ((arg (cdr argv)))
@@ -70,7 +70,7 @@
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
                 (if (me)
-                    (query-tasks (sort-by < task-id)
+                    (query-tasks (sort-by < task-ui-id)
                                  (filter-by task-started?)
                                  (filter-by not task-done?)
                                  (filter-by (curryr task-assigned-to-user? (user-id (me)))))
@@ -81,7 +81,7 @@
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
                 (if (me)
-                    (query-tasks (sort-by < task-id)
+                    (query-tasks (sort-by < task-ui-id)
                                  (sort-by > (curry get-user-task-assignment-index (me)))
                                  (filter-by task-ready?)
                                  (filter-by not task-started?)
@@ -101,7 +101,7 @@
         (for/list ([dmf (in-domain)]) (parameterize ([current-domain-frame dmf])
             (define tasks
                 (if (me)
-                    (query-tasks (sort-by < task-id)
+                    (query-tasks (sort-by < task-ui-id)
                                  (sort-by > (curry get-user-task-assignment-index (me)))
                                  (filter-by task-ready?)
                                  (filter-by not task-started?)
@@ -148,7 +148,7 @@
 
 (define (task->summaryrow t)
     (list
-        (~a (task-id t))
+        (~a (task-ui-id t))
         (~a (task-title t))
         (format "~a~a~a ~a"
             (if (task-ready? t)     "r" "-")

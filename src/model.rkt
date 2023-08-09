@@ -11,7 +11,9 @@
     racket/block racket/match
 )
 (provide
-    register-task   get-task    next-task-id    task-count
+    register-task
+        get-task    get-task/ui
+        next-task-ui-id    task-count
     register-user
         get-user-by-id
         get-user-by-name
@@ -28,15 +30,17 @@
 
 (: register-task (Task -> Void))
 (: get-task (TaskId -> (U Task (^ Exn:Fail))))
-(: next-task-id (-> TaskId))
+(: next-task-ui-id (-> UiId))
 (: task-count (-> ExactNonnegativeInteger))
 (define (register-task t [dmpath empty])
     (define ns (resolve-domain dmpath))
     (domain/register-task ns t))
 (define (get-task tid [dmpath empty])
     (domain/get-task (resolve-domain dmpath) tid))
-(define (next-task-id [dmpath empty])
-    (domain/next-task-id (resolve-domain dmpath)))
+(define (get-task/ui tuiid [dmpath empty])
+    (domain/get-task/ui (resolve-domain dmpath) tuiid))
+(define (next-task-ui-id [dmpath empty])
+    (domain/next-task-ui-id (resolve-domain dmpath)))
 (define (task-count [dmpath empty])
     (domain/task-count (resolve-domain dmpath)))
 
