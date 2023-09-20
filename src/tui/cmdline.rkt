@@ -13,8 +13,7 @@
     data/union-find
     (for-syntax racket/base
         syntax/parse
-        threading
-))
+        threading))
 
 (:typedef FlagLiteral String)
 (:typedef FlagDesc String)
@@ -70,8 +69,6 @@
          ;#'(list               name argv
                                (list parts.result-spec ...)
                                (list help-flags ...))]))
-                
-          
 
 (struct exn:help exn ())
 (struct exn:flag:each exn (flag))
@@ -139,7 +136,6 @@
 (: _find-flag (FlagLiteral (Listof FlagSpec) -> (? FlagSpec)))
 (define (_find-flag flag specs)
     (if* (empty? specs) #f
-;(printf "_find-flag ~s ~s\n" flag (caar specs))
     (define spec (car specs))
     (or (for/or ([flaglit (car spec)]
                  #:when (equal? flaglit flag))
@@ -151,9 +147,6 @@
                ((Sequenceof String) (Listof FlagSpec) (Listof FlagSpec) (Listof String)
                 -> (Listof String)))
 (define (_parse-argv argv specs [awaiting-args '()] [collected-args '()])
-;(pretty-write specs)
-;(printf "_parse-argv ~a -- ~a ~a\n" argv awaiting-args collected-args)
-    ; run effects of flags as they collect their arguments
     (if* (and (not (empty? awaiting-args))
               (<= (~> awaiting-args car cadddr length) (length collected-args)))
          (block (define argc (~> awaiting-args car cadddr length))
@@ -161,7 +154,6 @@
                 (define remaining (~> collected-args reverse (drop _ argc) reverse))
                 (apply (~> awaiting-args car caddr) args)
                 (_parse-argv argv specs (cdr awaiting-args) remaining))
-    ; if no flags pending arguments, all args are to the command
     (if* (and (empty? awaiting-args) (not (empty? collected-args)))
          (append (reverse collected-args) (_parse-argv argv specs awaiting-args '()))
     (if* (empty? argv) 
@@ -214,14 +206,6 @@
     (print-table table
         '(0 0) '(100 100) '(0 2) '(left left)))
     
-;(: parse-command-line (String (Sequenceof String) FlagTable (Listof String) -> (Listof String)))
-;(:typedef FlagLiteral String)
-;(:typedef FlagDesc String)
-;(:typedef (FlagSpec a ...)
-    ;(List (Listof FlagLiteral) (Listof FlagDesc) (a ... -> Void) (Listof String)))
-;(:typedef FlagGroup (List* (U 'once-each 'once-any 'multi)
-                           ;(Listof FlagSpec)))
-;(:typedef FlagTable (Listof (U String FlagGroup)))
 (module+ main
     (require racket/pretty racket/exn)
     (define flags-hit (make-hash))
