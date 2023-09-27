@@ -1,2 +1,4 @@
 gregor-lib
 threading-lib
+megaparsack-lib
+functional-lib
