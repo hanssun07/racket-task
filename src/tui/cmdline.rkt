@@ -17,42 +17,42 @@
         threading))
 
 (define (parse-command str)
-    (define escaped/p
-        (do (char/p #\\)
-            any-char/p))
-    (define single-quote/p
-        (do (char/p #\')
-            (res <- (many/p (char-not/p #\')))
-            (char/p #\')
-            (pure (list->string res))))
+    (define escaped/p (do
+        (char/p #\\)
+        any-char/p))
+    (define single-quote/p (do
+        (char/p #\')
+        (res <- (many/p (char-not/p #\')))
+        (char/p #\')
+        (pure (list->string res))))
     (define double-quote/p
-        (let ([escaped/p (do (char/p #\\) (char-in/p "\"\\"))])
-            (do (char/p #\")
-                (res <- (many/p (or/p escaped/p (char-not/p #\"))))
-                (char/p #\")
-                (pure (list->string res)))))
-    (define brace-expanded/p
-        (do (char/p #\{)
-            (res <- (many+/p (arg/p (char-not-in/p " \t},")) #:sep (char/p #\,)))
-            (char/p #\})
-            (pure (apply append res))))
-    (define (arg/p raw/p)
-        (do (parts <- (many+/p (or/p escaped/p single-quote/p double-quote/p
-                                     (try/p brace-expanded/p)
-                                     raw/p)))
-            (pure (~> parts
-                      (map (lambda (x) (if (char? x) (string x) x)) _)
-                      (map (lambda (x) (if (string? x) (list x) x)) _)
-                      (foldr (lambda (parts rests) 
-                                (for*/list ([part parts] [rest rests])
-                                    (string-append part rest)))
-                             (list "") _)))))
-    (define line/p
-        (do (many/p space/p)
-            (res <- (many/p (arg/p (char-not-in/p " \t")) #:sep (many+/p space/p)))
-            (many/p space/p)
-            eof/p
-            (pure (apply append res))))
+        (let ([escaped/p (do (char/p #\\) (char-in/p "\"\\"))]) (do
+            (char/p #\")
+            (res <- (many/p (or/p escaped/p (char-not/p #\"))))
+            (char/p #\")
+            (pure (list->string res)))))
+    (define brace-expanded/p (do
+        (char/p #\{)
+        (res <- (many+/p (arg/p (char-not-in/p " \t},")) #:sep (char/p #\,)))
+        (char/p #\})
+        (pure (apply append res))))
+    (define (arg/p raw/p) (do
+        (parts <- (many+/p (or/p escaped/p single-quote/p double-quote/p
+                                 (try/p brace-expanded/p)
+                                 raw/p)))
+        (pure (~> parts
+                  (map (lambda (x) (if (char? x) (string x) x)) _)
+                  (map (lambda (x) (if (string? x) (list x) x)) _)
+                  (foldr (lambda (parts rests) 
+                             (for*/list ([part parts] [rest rests])
+                                (string-append part rest)))
+                         (list "") _)))))
+    (define line/p (do
+        (many/p space/p)
+        (res <- (many/p (arg/p (char-not-in/p " \t")) #:sep (many+/p space/p)))
+        (many/p space/p)
+        eof/p
+        (pure (apply append res))))
     (define res (parse-string line/p str))
     (parse-result! res))
 

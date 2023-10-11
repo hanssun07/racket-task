@@ -11,6 +11,7 @@
     if* if**
     list-uniq
     list-truncate
+    list-inner-merge
     datum-rec-transform)
 
 (: assert!! (Bool -> (U Void (^ Exn:Fail))))
@@ -64,3 +65,15 @@
     (if (list? datum)
         (map (curryr datum-rec-transform fn) datum)
         (fn datum)))
+
+(: list-inner-merge ((a a -> (Listof a)) (Listof a) -> (Listof a)))
+(define (list-inner-merge merger lst)
+    (let loop ([lst-rev (reverse lst)] [res '()])
+        (if* (empty? lst-rev) res
+        (define a (car lst-rev))
+        (define a-rest (cdr lst-rev))
+        (if* (empty? res) (loop a-rest (cons a res))
+        (define b (car res))
+        (define b-rest (cdr res))
+        (define merged (merger a b))
+        (loop a-rest (append merged b-rest))))))
