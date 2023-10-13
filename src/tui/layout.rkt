@@ -8,6 +8,7 @@
     "../utils.rkt"
     "format.rkt"
     racket/match
+    racket/list racket/set
     megaparsack megaparsack/text data/monad data/applicative
 )
 
@@ -37,23 +38,48 @@
 (struct ui:aligntok ui (tok))
 |#
 
-(struct ui ())
-(struct ui:haligntok    ui ())
-(struct ui:hspace       ui (width))
-(struct ui:hfill        ui ())
-(struct ui:valigntok    ui ())
-(struct ui:vspace       ui (height))
-(struct ui:vfill        ui ())
-(struct ui:text-raw     ui (str) #:transparent)
-(struct ui:text-break   ui () #:transparent)
-(struct ui:alts         ui (a b) #:transparent)
-(struct ui:append       ui (a b) #:transparent)
-(struct ui:empty        ui () #:transparent)
-(struct ui:with-cost    ui (penalty contents) #:transparent)
+(struct ui ()                       #:transparent)
+(struct ui:haligntok    ui ()       #:transparent)
+(struct ui:hspace       ui (width)  #:transparent)
+(struct ui:hfill        ui ()       #:transparent)
+(struct ui:valigntok    ui ()       #:transparent)
+(struct ui:vspace       ui (height) #:transparent)
+(struct ui:vfill        ui ()       #:transparent)
 
-(struct ui-cost:rel-width (prop min max))
+(struct ui:text-raw     ui (str)    #:transparent)
+(struct ui:text-break   ui ()       #:transparent)
+(struct ui:alts         ui (a b)    #:transparent)
+(struct ui:append       ui (a b)    #:transparent)
+(struct ui:empty        ui ()       #:transparent)
+(struct ui:with-cost    ui (cost ui) #:transparent)
 
-(define (ui:list . parts) (foldr ui:append (ui:empty) parts))
+(struct ui-cost:rel-width (prop min max) #:transparent)
+
+(define prune-memo (weak-seteq))
+(define (ui-prune x) (match x
+    [(ui:text-raw "")         (ui:empty)]
+    [(ui:append (ui:empty) b) (ui-prune b)]
+    [(ui:append a (ui:empty)) (ui-prune a)]
+    [(ui:append a b)          (if (set-member? prune-memo x) x
+                                  (let ([res (ui:append (ui-prune a) (ui-prune b))])
+                                      (set-add! prune-memo res)
+                                      (ui-prune res)))]
+    [(ui:alts   a a)          (ui-prune a)]
+    [(ui:alts   a b)          (ui:alts (ui-prune a) (ui-prune b))]
+    [(ui:with-cost c u)       (ui:with-cost c (ui-prune u))]
+    [x x]))
+(define (ui-dedup x)
+    (define uniq-hash (make-hash))
+    (define (tag x) (hash-ref! uniq-hash x  x))
+    (define (get x) (hash-ref  uniq-hash x #f))
+    (define (rec x) (match x
+        [(ui:alts a b)      (or (get x) (tag (ui:alts (rec a) (rec b))))]
+        [(ui:append a b)    (or (get x) (tag (ui:append (rec a) (rec b))))]
+        [(ui:with-cost c u) (or (get x) (tag (ui:with-cost (rec c) (rec u))))]
+        [x                  (tag x)]))
+    (rec x))
+
+(define (ui:list a . rest) (if (empty? rest) a (ui:append a (apply ui:list rest))))
 (define (ui:text-para str)
     (struct breakable (left right orig cost type))
     (struct hardbreak ())
@@ -86,25 +112,24 @@
          (list (string-append a b))]
         [[_ _] (list a b)]))
     (define toks-san (list-inner-merge tok-merge toks))
-    ; TODO: memoization pass to dedup
     (define (merge-to-ui a b) (match* (a b)
-        [[(? string?) (? ui?)]     (list (ui:append (ui:text-raw a) b))]
+        [[(? string?)           (? ui?)]     (list (ui:append (ui:text-raw a) b))]
+        [[(? hardbreak?)        (? ui?)]     (list (ui:append (ui:text-break) b))]
         [[(breakable l r s c _) (? ui?)]
          (let ([ui:break (ui:list (ui:text-raw l) (ui:text-break) (ui:text-raw r))])
-             (list (ui:append (ui:alts s (if c (ui:with-cost c ui:break) ui:break))
-                              b)))
-         #;(let ([ui:break (ui:list (ui:text-raw l) (ui:text-break) (ui:text-raw r) b)])
-             (list (ui:alts (ui:append s b)
-                      (if c (ui:with-cost c ui:break) ui:break))))]
-        [[(hardbreak) (? ui?)]     (list (ui:append a b))]))
-    (list-inner-merge merge-to-ui (append toks-san (list (ui:empty))))
-)
+             (list (ui:append (ui:alts (ui:text-raw s) (if c (ui:with-cost c ui:break) ui:break))
+                              b)))]))
+    (define ui-raw (car (list-inner-merge merge-to-ui (append toks-san (list (ui:empty))))))
+    (ui-dedup (ui-prune ui-raw)))
+
+(struct measure:para (start cost doc))
+;(define (render-text-para width 
 
 (require racket/pretty)
-(pretty-print (ui:text-para "
+(#;void pretty-print (ui:text-para "
 hello world! test...
 "))
-#;(pretty-print (ui:text-para "
+#;(void #;pretty-print (ui:text-para "
 implement tables with aligmnt markers + margin elems + fill elems
 -> allows inner tables spanning cells
 -> align-in-cell by marker + margin + text + fill in correct ordering
