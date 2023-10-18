@@ -6,6 +6,7 @@
     threading
     racket/string racket/list racket/sequence
     racket/format
+    racket/match racket/block
     racket/port
     ;syntax/parse
     (for-syntax
@@ -13,91 +14,122 @@
     )
 )
 
-(: _print-string/display (DisplayString OutputPort (U Bool 0 1) -> Void))
-(define (_print-string/display sd port mode)
-    (if* mode (write-string "#<string/display>" port)
-    (write-string (string/display->string sd) port)))
+(: _print-tui:string (TuiString OutputPort (U Bool 0 1) -> Void))
+(define (_print-tui:string sd port mode)
+    (if* mode (write-string "#<tui:string>" port)
+    (write-string (tui:string->string sd) port)))
 
-(:structdef tui-fmt : TuiFmt ([code : String]))
-(struct tui-fmt (code)
+(:typedef FmtSpec (U (listof String) 'cancel))
+(:structdef tui:fmt : TuiFmt
+    ([bold      : FmtSpec]
+     [under     : FmtSpec]
+     [fore      : FmtSpec]
+     [back      : FmtSpec]))
+(struct tui:fmt (bold? under? fore back)
     #:methods gen:custom-write
-    [(define write-proc _print-string/display)])
+    [(define write-proc _print-tui:string)])
 
-(define (tui-fmt-combine . tui-fmts)
-    (~> (map tui-fmt-code tui-fmts)
+(: tui:fmt-combine ((Listof TuiFmt) -> TuiFmt))
+(define tui:fmt-combine (block
+    (define (fmtspec-join a b) (match* (a b)
+        [((cons a as) 'clear)  as]
+        [((? list?) (? list?)) (append b a)]))
+    (define (tui:fmt-merge a b)
+        (match-define (tui:fmt ab au af ak) a)
+        (match-define (tui:fmt bb bu bf bk) b)
+        (list (tui:fmt (fmtspec-join ab bb)
+                       (fmtspec-join au bu)
+                       (fmtspec-join af bf)
+                       (fmtspec-join ak bk))))
+    (lambda fmts (car (list-inner-merge tui:fmt-merge fmts)))))
+
+(: tui:fmt->string (TuiFmt -> String))
+(define (tui:fmt->string fmt)
+    (define (fmtspec->str? f) (and (pair? f) (car f)))
+    (match-define (tui:fmt b u f k) fmt)
+    (~> (list b u f k)
+        (map fmtspec->str? _)
+        (filter values _)
+        (cons "0" _) ; reset code
         (string-join _ ";")
-        (tui-fmt _)))
+        (format "\033[~am" _)))
 
-(:structdef _string/display : String/Display ([elems : (Listof (U TuiFmt String))]))
-(struct _string/display (elems) #:transparent
+(:structdef _tui:string : TuiStringGroup ([elems : (Listof (U TuiFmt String))]))
+(struct _tui:string (elems) #:transparent
     #:methods gen:custom-write
-    [(define write-proc _print-string/display)])
+    [(define write-proc _print-tui:string)])
 
-(: s/d-cons ((U TuiFmt String) DisplayString -> DisplayString))
-(: s/d-car  (DisplayString -> (U TuiFmt String (^ Exn:Fail))))
-(: s/d-cdr  (DisplayString -> (U DisplayString (^ Exn:Fail))))
-(: s/d-empty DisplayString)
-(: s/d-empty? DisplayString -> Bool)
-(define (s/d-cons a b)  (~> (_string/display-elems b) (cons a _) (_string/display _)))
-(define (s/d-car  sd)   (~> (_string/display-elems sd) (car _)))
-(define (s/d-cdr  sd)   (~> (_string/display-elems sd) (cdr _) (_string/display _)))
-(define s/d-empty       (_string/display '()))
-(define (s/d-empty? sd) (~> (_string/display-elems sd) (empty? _)))
+(: tui:string-cons ((U TuiFmt String) TuiString -> TuiString))
+(: tui:string-car  (TuiString -> (U TuiFmt String (^ Exn:Fail))))
+(: tui:string-cdr  (TuiString -> (U TuiString (^ Exn:Fail))))
+(: tui:string-empty TuiString)
+(: tui:string-empty? TuiString -> Bool)
+(define (tui:string-cons a b)  (~> (_tui:string-elems b) (cons a _) (_tui:string _)))
+(define (tui:string-car  sd)   (~> (_tui:string-elems sd) (car _)))
+(define (tui:string-cdr  sd)   (~> (_tui:string-elems sd) (cdr _) (_tui:string _)))
+(define tui:string-empty       (_tui:string '()))
+(define (tui:string-empty? sd) (~> (_tui:string-elems sd) (empty? _)))
 
-(: s/d (Any * -> DisplayString))
-(define (s/d . elems)
-    (define (->string/display a) (cond
+(: tui:string (Any * -> TuiString))
+(define (tui:string . elems)
+    (define (->tui:string a) (cond
         [(string?          a) a]
-        [(tui-fmt?         a) a]
-        [(_string/display? a) a]
+        [(tui:fmt?         a) a]
+        [(_tui:string? a) a]
         [#t                   (~a a)]))
-    (define (merge-string/display e es)
-        (if (_string/display? e)
-            (append (_string/display-elems e) es)
+    (define (merge-tui:string e es)
+        (if (_tui:string? e)
+            (append (_tui:string-elems e) es)
             (cons e es)))
-    (~> (map ->string/display elems)
-        (foldr merge-string/display '() _)
-        _string/display))
+    (~> (map ->tui:string elems)
+        (foldr merge-tui:string '() _)
+        _tui:string))
 
-(:typedef DisplayString (U String TuiFmt String/Display))
+(:typedef TuiString (U String TuiFmt TuiStringGroup))
 
-(: tui-fmt->string (TuiFmt -> String))
-(define (tui-fmt->string t) (format "\033[~am" (tui-fmt-code t)))
+(: tui:string->string (TuiString Bool -> String))
+(define (tui:string->string s [format? #t])
+    (: tui:string-flatten (TuiString -> (listof (U String TuiFmt))))
+    (define (tui:string-flatten s) (match s
+        [(? string?)  (list s)]
+        [(? tui:fmt?) (list s)]
+        [(_tui:string elems) (apply append (map tui:string-flatten elems))]))
+    (define flat (tui:string-flatten s))
+    (define strs (let loop ([elems flat] [ctx tui:fmt:identity]) (match elems
+        [(cons (? string?  s) es) (cons s (loop es ctx))]
+        [(cons (? tui:fmt? f) es)
+         (define newfmt (tui:fmt-combine ctx f))
+         (if format?
+             (cons (tui:fmt->string newfmt) (loop es newfmt))
+             (loop es newfmt))]   
+        ['() '()])))
+    (apply string-append strs))
 
-(: string/display->string (DisplayString Bool -> String))
-(define (string/display->string s [format? #t]) (cond
-    [(string?          s) s]
-    [(tui-fmt?         s) (if format? (tui-fmt->string s) "")]
-    [(_string/display? s)
-     (~> (_string/display-elems s)
-         (map (lambda~> (string/display->string _ format?)) _)
-         (apply string-append _))]))
-
-(: string/display-length    (DisplayString -> Index))
-(: string/display-substr    (DisplayString Index Index -> DisplayString))
-(: string/display-truncate  (DisplayString Index (U 'left 'right 'center) -> DisplayString))
-(: string/display-search*   (DisplayString StrPattern 
+(: tui:string-length    (TuiString -> Index))
+(: tui:string-substr    (TuiString Index Index -> TuiString))
+(: tui:string-truncate  (TuiString Index (U 'left 'right 'center) -> TuiString))
+(: tui:string-search*   (TuiString StrPattern 
                              (#:match-select ((Listof (Pair Index Index)) -> a))
                              -> (Listof a))
                             #:def (a (Pair Index Index)))
-(: string/display-reflow    (DisplayString Index -> (Listof DisplayString)))
-(: string/display-dims      (DisplayString Index -> (Pair Index Index)))
-(: string/display-width     (DisplayString Index -> Index))
-(: string/display-height    (DisplayString Index -> Index))
+(: tui:string-reflow    (TuiString Index -> (Listof TuiString)))
+(: tui:string-dims      (TuiString Index -> (Pair Index Index)))
+(: tui:string-width     (TuiString Index -> Index))
+(: tui:string-height    (TuiString Index -> Index))
 
-(define (string/display-length s)
-    (~> (s/d s)
-        (_string/display-elems _)
+(define (tui:string-length s)
+    (~> (tui:string s)
+        (_tui:string-elems _)
         (filter string? _)
         (map string-length _)
         (foldl + 0 _)))
 
-(define (string/display-substr s start end)
-    (define elems (~> (s/d s) (_string/display-elems _)))
+(define (tui:string-substr s start end)
+    (define elems (~> (tui:string s) (_tui:string-elems _)))
     (define res (let loop ([i 0] [elems elems])
         (if* (empty? elems) empty
         (define next (car elems))
-        (if* (tui-fmt? next) (cons next (loop i (cdr elems)))
+        (if* (tui:fmt? next) (cons next (loop i (cdr elems)))
         (define next-len (string-length next))
         (define this-value (cond
             [(<= (+ i next-len) start)       #f]
@@ -107,26 +139,26 @@
         (if this-value
             (cons this-value (loop (+ i next-len) (cdr elems)))
             (loop (+ i next-len) (cdr elems)))))))
-    (_string/display res))
+    (_tui:string res))
 
-(define (string/display-truncate s len [align 'left])
-    (if* (not (_string/display? s)) (string/display-truncate (s/d s) len align)
-    (define len-s (string/display-length s))
+(define (tui:string-truncate s len [align 'left])
+    (if* (not (_tui:string? s)) (tui:string-truncate (tui:string s) len align)
+    (define len-s (tui:string-length s))
     (if* (<= len-s len) s
     (define start (case align
         [(left) 0] [(right) (- len-s len)] [(center) (quotient (- len-s len) 2)]))
-    (string/display-substr s start (+ start len)))))
+    (tui:string-substr s start (+ start len)))))
 
-(define (string/display-search* s pat
+(define (tui:string-search* s pat
          #:match-select [match-select car])
-    (define dstr (string/display->string s #f))
+    (define dstr (tui:string->string s #f))
     (regexp-match-positions* pat dstr #:match-select match-select))
 
-(define (string/display-reflow s width)
-    (if* (not (_string/display? s)) (string/display-reflow (s/d s) width)
-    (define newline-idxs (string/display-search* s "\n" #:match-select caar))
-    (define space-idxs (string/display-search* s " " #:match-select caar))
-    (define len (string/display-length s))
+(define (tui:string-reflow s width)
+    (if* (not (_tui:string? s)) (tui:string-reflow (tui:string s) width)
+    (define newline-idxs (tui:string-search* s "\n" #:match-select caar))
+    (define space-idxs (tui:string-search* s " " #:match-select caar))
+    (define len (tui:string-length s))
     (define (gather-breaks ns ss [i 0])
         (define ni (if (empty? ns) +inf.0 (car ns)))
         (define si (if (empty? ss) +inf.0 (car ss)))
@@ -143,77 +175,81 @@
     (define starts (cons 0 (map + (map car breaks) (map cadr breaks))))
     (define ends (map car breaks))
     (for/list ([start starts] [end ends])
-        (string/display-substr s start end))))
+        (tui:string-substr s start end))))
 
-(define (string/display-dims s [maxwidth +inf.0])
-    (define reflowed (string/display-reflow s maxwidth))
+(define (tui:string-dims s [maxwidth +inf.0])
+    (define reflowed (tui:string-reflow s maxwidth))
     (cons (length reflowed)
-          (argmax values (map string/display-length reflowed))))
-(define (string/display-width s [maxwidth +inf.0])
-    (cdr (string/display-dims s maxwidth)))
-(define (string/display-height s [maxwidth +inf.0])
-    (car (string/display-dims s maxwidth)))
+          (argmax values (map tui:string-length reflowed))))
+(define (tui:string-width s [maxwidth +inf.0])
+    (cdr (tui:string-dims s maxwidth)))
+(define (tui:string-height s [maxwidth +inf.0])
+    (car (tui:string-dims s maxwidth)))
 
-(define-syntax (define-tui-fmt stx)
-    (syntax-parse stx
-        [(form name:id code:string)
-         (with-syntax ([fmtcode-id (format-id #'form "fmtcode-~a" #'name)]
-                       [tui-obj-id (format-id #'form "tui-~a" #'name)])
-             #'(define-values (fmtcode-id tui-obj-id)
-                 (values code (tui-fmt code))))]))
-(define-tui-fmt reset         "0")
-(define-tui-fmt bold          "1")
-(define-tui-fmt under         "4")
-(define-tui-fmt fore-black    "38;5;0")
-(define-tui-fmt fore-red      "38;5;1")
-(define-tui-fmt fore-green    "38;5;2")
-(define-tui-fmt fore-yellow   "38;5;3")
-(define-tui-fmt fore-blue     "38;5;4")
-(define-tui-fmt fore-magenta  "38;5;5")
-(define-tui-fmt fore-cyan     "38;5;6")
-(define-tui-fmt fore-white    "38;5;7")
-(define-tui-fmt fore+black    "38;5;8")
-(define-tui-fmt fore+red      "38;5;9")
-(define-tui-fmt fore+green    "38;5;10")
-(define-tui-fmt fore+yellow   "38;5;11")
-(define-tui-fmt fore+blue     "38;5;12")
-(define-tui-fmt fore+magenta  "38;5;13")
-(define-tui-fmt fore+cyan     "38;5;14")
-(define-tui-fmt fore+white    "38;5;15")
-(define-tui-fmt back-black    "48;5;0")
-(define-tui-fmt back-red      "48;5;1")
-(define-tui-fmt back-green    "48;5;2")
-(define-tui-fmt back-yellow   "48;5;3")
-(define-tui-fmt back-blue     "48;5;4")
-(define-tui-fmt back-magenta  "48;5;5")
-(define-tui-fmt back-cyan     "48;5;6")
-(define-tui-fmt back-white    "48;5;7")
-(define-tui-fmt back+black    "48;5;8")
-(define-tui-fmt back+red      "48;5;9")
-(define-tui-fmt back+green    "48;5;10")
-(define-tui-fmt back+yellow   "48;5;11")
-(define-tui-fmt back+blue     "48;5;12")
-(define-tui-fmt back+magenta  "48;5;13")
-(define-tui-fmt back+cyan     "48;5;14")
-(define-tui-fmt back+white    "48;5;15")
+(define (make-tui:fmt b u f k)
+    (define (s->f x) (match x
+        [(? string?) (list x)]
+        [#f          (list)]
+        ['clear      x]))
+    (tui:fmt (s->f b) (s->f u) (s->f f) (s->f k)))
+(define tui:fmt:identity     (make-tui:fmt #f     #f #f        #f))
+(define tui:fmt:bold         (make-tui:fmt "1"    #f #f        #f))
+(define tui:fmt:unbold       (make-tui:fmt 'clear #f #f        #f))
+(define tui:fmt:under        (make-tui:fmt #f    "4" #f        #f))
+(define tui:fmt:ununder      (make-tui:fmt #f 'clear #f        #f))
+(define tui:fmt:fore-black   (make-tui:fmt #f     #f "38;5;0"  #f))
+(define tui:fmt:fore-red     (make-tui:fmt #f     #f "38;5;1"  #f))
+(define tui:fmt:fore-green   (make-tui:fmt #f     #f "38;5;2"  #f))
+(define tui:fmt:fore-yellow  (make-tui:fmt #f     #f "38;5;3"  #f))
+(define tui:fmt:fore-blue    (make-tui:fmt #f     #f "38;5;4"  #f))
+(define tui:fmt:fore-magenta (make-tui:fmt #f     #f "38;5;5"  #f))
+(define tui:fmt:fore-cyan    (make-tui:fmt #f     #f "38;5;6"  #f))
+(define tui:fmt:fore-white   (make-tui:fmt #f     #f "38;5;7"  #f))
+(define tui:fmt:fore+black   (make-tui:fmt #f     #f "38;5;8"  #f))
+(define tui:fmt:fore+red     (make-tui:fmt #f     #f "38;5;9"  #f))
+(define tui:fmt:fore+green   (make-tui:fmt #f     #f "38;5;10" #f))
+(define tui:fmt:fore+yellow  (make-tui:fmt #f     #f "38;5;11" #f))
+(define tui:fmt:fore+blue    (make-tui:fmt #f     #f "38;5;12" #f))
+(define tui:fmt:fore+magenta (make-tui:fmt #f     #f "38;5;13" #f))
+(define tui:fmt:fore+cyan    (make-tui:fmt #f     #f "38;5;14" #f))
+(define tui:fmt:fore+white   (make-tui:fmt #f     #f "38;5;15" #f))
+(define tui:fmt:unfore       (make-tui:fmt #f     #f 'clear    #f))
+(define tui:fmt:back-black   (make-tui:fmt #f     #f #f  "48;5;0"))
+(define tui:fmt:back-red     (make-tui:fmt #f     #f #f  "48;5;1"))
+(define tui:fmt:back-green   (make-tui:fmt #f     #f #f  "48;5;2"))
+(define tui:fmt:back-yellow  (make-tui:fmt #f     #f #f  "48;5;3"))
+(define tui:fmt:back-blue    (make-tui:fmt #f     #f #f  "48;5;4"))
+(define tui:fmt:back-magenta (make-tui:fmt #f     #f #f  "48;5;5"))
+(define tui:fmt:back-cyan    (make-tui:fmt #f     #f #f  "48;5;6"))
+(define tui:fmt:back-white   (make-tui:fmt #f     #f #f  "48;5;7"))
+(define tui:fmt:back+black   (make-tui:fmt #f     #f #f  "48;5;8"))
+(define tui:fmt:back+red     (make-tui:fmt #f     #f #f  "48;5;9"))
+(define tui:fmt:back+green   (make-tui:fmt #f     #f #f "48;5;10"))
+(define tui:fmt:back+yellow  (make-tui:fmt #f     #f #f "48;5;11"))
+(define tui:fmt:back+blue    (make-tui:fmt #f     #f #f "48;5;12"))
+(define tui:fmt:back+magenta (make-tui:fmt #f     #f #f "48;5;13"))
+(define tui:fmt:back+cyan    (make-tui:fmt #f     #f #f "48;5;14"))
+(define tui:fmt:back+white   (make-tui:fmt #f     #f #f "48;5;15"))
+(define tui:fmt:unback       (make-tui:fmt #f     #f #f    'clear))
+
+(define (tui:with-bold   . parts) (apply tui:string `(,tui:fmt:bold  ,@parts ,tui:fmt:unbold)))
+(define (tui:with-under  . parts) (apply tui:string `(,tui:fmt:under ,@parts ,tui:fmt:ununder)))
+(define (tui:with-fore f . parts) (apply tui:string `(,f ,@parts ,tui:fmt:unfore)))
+(define (tui:with-back b . parts) (apply tui:string `(,b ,@parts ,tui:fmt:unback)))
 
 (module+ main
-    (define displaystr (s/d
+    (define displaystr (tui:string
         "hello\n"
-        tui-bold
-        "1 2 3 4 5 6 7 8 9 0 "
-        tui-reset tui-under
-        "11 22 33 44 55 66 77 88 99 00 "
-        tui-bold
-        "111 222 333 444 555 666 777 888 999 000 "
-        tui-reset tui-fore-blue tui-back-white
-        "1111    2222    3333    4444    5555    "
-        tui-reset
+        (tui:with-bold "1 2 3 4 5 6 7 8 9 0 ")
+        (tui:with-under "11 22 33 44 55 66 77 88 99 00 "
+            (tui:with-bold "111 222 333 444 555 666 777 888 999 000 "))
+        (tui:with-fore tui:fmt:fore-blue
+            (tui:with-back tui:fmt:back-white
+                "1111    2222    3333    4444    5555    "))
         "6666    7777    8888    9999    0000    "
-        tui-back+black
-        "\nnewline\nnewline                                     "
-        "longlineqwertyuiopasdfghjklzxcvbnm"
-        tui-reset
+        (tui:with-back tui:fmt:back+black
+            "\nnewline\nnewline                                     "
+            "longlineqwertyuiopasdfghjklzxcvbnm")
     ))
-    (for ([sd (string/display-reflow displaystr 20)])
+    (for ([sd (tui:string-reflow displaystr 20)])
         (displayln sd)))
