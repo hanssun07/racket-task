@@ -53,8 +53,6 @@
 (struct ui:empty        ui ()       #:transparent)
 (struct ui:with-cost    ui (cost ui) #:transparent)
 
-(struct ui-cost:rel-width (prop min max) #:transparent)
-
 (define prune-memo (weak-seteq))
 (define (ui-prune x) (match x
     [(ui:text-raw "")         (ui:empty)]
@@ -89,7 +87,7 @@
         (pure (breakable (if (eq? side 'right) (string ch) "")
                          (if (eq? side 'left)  (string ch) "")
                          (string ch) cost type))))
-    (define avoid-cost (ui-cost:rel-width 1/10 1 +inf.0))
+    (define avoid-cost 5)
     (define breakable/p (or/p
         (breakable-family/p " \t"       'subsume #:type 'space)
         (do (ch <- (char-in/p "\r\n\v"))  (pure (hardbreak)))
@@ -122,13 +120,119 @@
     (define ui-raw (car (list-inner-merge merge-to-ui (append toks-san (list (ui:empty))))))
     (ui-dedup (ui-prune ui-raw)))
 
-(struct measure:para (start cost doc))
-;(define (render-text-para width 
+(struct cost:factory (from-text from-break from-penalty ident merge <=?))
+(define (cost:factory:para:maxwidth width)
+    ; TODO: rewrite with struct + badness
+    (define (c->n a) (- (* 2 width (car a)) (cadr a)))
+    (define (from-text start-at len)
+        (if (<= (+ start-at len) width)
+            (list 0 len)
+            (list (- (+ start-at len) width) (- width start-at))))
+    (define (from-break) (list 1 0))
+    (define (from-penalty p) (list 0 0));(- p)))
+    (define (merge a b) (map + a b))
+    (define (cost<=? a b) (<= (c->n a) (c->n b)))
+    (cost:factory from-text from-break from-penalty (list 0 0) merge cost<=?))
+(define (cost:factory:para:cell)
+    (define (c->n a)
+        (match-define (list width lines filled) a)
+        (- (* width lines 2) filled))
+    (define (from-text start-at len)
+        (list (+ start-at len) 0 len))
+    (define (from-break) (list 0 1 0))
+    (define (from-penalty p) (list 1 (- p) 0))
+    (define (merge a b)
+        (match-define (list aw al af) a)
+        (match-define (list bw bl bf) b)
+        (list (max aw bw) (+ al bl) (+ af bf)))
+    (define (cost<=? a b) (<= (c->n a) (c->n b)))
+    (cost:factory from-text from-break from-penalty (list 0 0 0) merge cost<=?))
+
+(:structdef measure:para : Measure:Para
+    ([start : Index] [end : Index] [doc : UI] [cost : UICost]))
+(struct measure:para (start end doc cost) #:transparent)
+; largest end first, no domination
+(:typedef Measure:Para:Frontier (Listof Measure:Para))
+
+(define (para:resolve ui factory)
+    (match-define (cost:factory text->cost break->cost penalty->cost cost:ident cost:merge cost:<=?) factory)
+    (define (ui->measure ui start-at) (match ui
+        [(ui:text-raw s) 
+         (define len (string-length s))
+         (measure:para start-at (+ start-at len) ui (text->cost start-at len))]
+        [(ui:text-break) (measure:para start-at 0 ui (break->cost))]
+        [(ui:empty)      (measure:para start-at start-at ui cost:ident)]
+        [(ui:append a b)
+         (match-define (measure:para htop hmid _ costtop) (ui->measure a start-at))
+         (match-define (measure:para _ hlo _ costlo) (ui->measure b hmid))
+         (measure:para htop hlo ui (cost:merge costtop costlo))]
+        [(ui:with-cost c u)
+         (match-define (measure:para htop hlo ui costui) (ui->measure u start-at))
+         (measure:para htop hlo ui (cost:merge costui (penalty->cost c)))]))
+    (define (measure-dominates? a b)
+        (match-define (measure:para as ae ad ac) a)
+        (match-define (measure:para bs be bd bc) b)
+        (and (<= as bs) (cost:<=? ac bc)))
+    (define (frontier-dedup ms) (match ms
+        ['()   ms]
+        [`(,_) ms]
+        [`(,a ,b ,@ms)
+         (if (measure-dominates? a b)
+             (cons b (frontier-dedup ms))
+             (cons a (frontier-dedup (cons b ms))))]))
+    (define (frontier-merge as bs) (match* (as bs)
+        [['() bs] bs]   [[as '()] as]
+        [[`(,a . ,ar) `(,b . ,br)] (cond
+         [(measure-dominates? a b) (frontier-merge as br)]
+         [(measure-dominates? b a) (frontier-merge ar bs)]
+         [(< (measure:para-end a) (measure:para-end b))
+             (cons b (frontier-merge as br))]
+         [#t (cons a (frontier-merge ar bs))])]))
+    ; TODO: memoization
+    (define (ui->frontier ui start-at) (match ui
+        [(ui:text-raw _)    (list (ui->measure ui start-at))]
+        [(ui:text-break)    (list (ui->measure ui start-at))]
+        [(ui:with-cost c u)
+         (define ((add-cost c) m)
+            (match-define (measure:para s e d mc) m)
+            (measure:para s e d (cost:merge mc c)))
+         (map (add-cost (penalty->cost c)) (ui->frontier u start-at))]
+        [(ui:append a b)    ; TODO: optimize generators so ui:append is right-heavy on measures
+         (define frontier-a (ui->frontier a start-at))
+         (define (try-add-b measure-a)
+            (match-define (measure:para as ae ad ac) measure-a)
+            (define frontier-b (ui->frontier b ae))
+            (define (measure-append measure-b)
+                (match-define (measure:para bs be bd bc) measure-b)
+                (measure:para as be (ui:append ad bd) ; TODO: uniqueness optimization
+                                    (cost:merge ac bc)))
+            (frontier-dedup (map measure-append frontier-b)))
+         (define raw-frontiers (map try-add-b frontier-a))
+         (foldl frontier-merge '() raw-frontiers)]
+        [(ui:alts a b)
+         (define frontier-a (ui->frontier a start-at))
+         (define frontier-b (ui->frontier b start-at))
+         (frontier-merge frontier-a frontier-b)]))
+    (define frontier (ui->frontier ui 0))
+    frontier
+)
+    
+    
+    
 
 (require racket/pretty)
-(#;void pretty-print (ui:text-para "
-hello world! test...
-"))
+(define test0 (ui:text-para "hello (wo-rld)! test..."))
+(pretty-print test0)
+
+(define test00 (para:resolve test0 (cost:factory:para:maxwidth 100)))
+(pretty-print test00)
+
+(define test01 (para:resolve test0 (cost:factory:para:maxwidth 10)))
+(pretty-print test01)
+
+(define test02 (para:resolve test0 (cost:factory:para:maxwidth 5)))
+(pretty-print test02)
+
 #;(void #;pretty-print (ui:text-para "
 implement tables with aligmnt markers + margin elems + fill elems
 -> allows inner tables spanning cells
